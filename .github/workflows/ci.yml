@@ -1,0 +1,25 @@
+# Checks every pull request and every push to main. The job is named `check` so the
+# "protect main" ruleset can require it (see docs/github.md).
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      # Add your language setup here, for example actions/setup-node@v4 or actions/setup-python@v5.
+      - name: Run the repo's checks
+        run: ./scripts/check.sh

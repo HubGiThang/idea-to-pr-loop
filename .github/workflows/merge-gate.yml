@@ -1,0 +1,64 @@
+# A required-style check that stays red while a PR must not merge:
+# it has the needs-human label, or a review thread (from Claude, Codex or a person) is unresolved.
+# Self-merge rules in CLAUDE.md require every check to be green, so this blocks auto-merge.
+# Resolving a thread fires no event, and labels added with GITHUB_TOKEN trigger no workflows, so the
+# fix workflow and anyone about to merge re-run this check with workflow_dispatch on the PR branch.
+name: Merge gate
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
+  pull_request_review:
+    types: [submitted, dismissed]
+  pull_request_review_comment:
+    types: [created, edited, deleted]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: PR number to check
+        required: true
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: merge-gate-${{ github.event.pull_request.number || inputs.pr }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check labels and review threads
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number || inputs.pr }}
+        run: |
+          owner="${REPO%/*}"; name="${REPO#*/}"
+          labels=$(gh pr view "$PR" -R "$REPO" --json labels --jq '[.labels[].name] | join(",")')
+          if echo ",$labels," | grep -q ",needs-human,"; then
+            echo "::error::This PR has the needs-human label. A person must check it and remove the label."
+            exit 1
+          fi
+          # Count every unresolved thread, outdated or not: a fix push makes old threads outdated,
+          # including security threads deliberately left open for a person.
+          unresolved=$(gh api graphql --paginate -F owner="$owner" -F name="$name" -F pr="$PR" -f query='
+            query($owner:String!,$name:String!,$pr:Int!,$endCursor:String){
+              repository(owner:$owner,name:$name){
+                pullRequest(number:$pr){
+                  reviewThreads(first:100, after:$endCursor){
+                    nodes{ isResolved }
+                    pageInfo{ hasNextPage endCursor }
+                  }
+                }
+              }
+            }' --jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved==false)] | length' \
+            | awk '{s+=$1} END {print s+0}')
+          if [ "$unresolved" -gt 0 ]; then
+            echo "::error::$unresolved review thread(s) are unresolved. Fix or answer each one and resolve it before merging."
+            exit 1
+          fi
+          echo "Merge gate passed: no needs-human label and no unresolved review threads."

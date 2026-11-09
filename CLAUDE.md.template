@@ -1,0 +1,33 @@
+# <project name>
+
+<!-- Copy this file to CLAUDE.md and fill in the parts in angle brackets. -->
+
+## How work arrives
+
+- Specs live in Notion (Specs database). Work is cut into Linear issues in team <TEAM KEY>, one slice each.
+- Each Linear issue syncs to a GitHub issue. The label `claude` means Claude should build it.
+- Read the issue's acceptance criteria and the linked spec before writing code. If the spec link is missing or the criteria are unclear, comment on the issue with the question and stop.
+
+## Git
+
+- Commits use plain imperative messages ("Add search page").
+<!-- Optional, see docs/options.md:
+- Never add Claude or Anthropic attribution anywhere: no `Co-Authored-By: Claude`, no "Generated with Claude Code", no session links, no attribution footers in commit messages, PR descriptions, code comments or files.
+-->
+
+## Branches and PRs
+
+- Branch name: `claude/<linear-id-lowercase>-<short-slug>`, e.g. `claude/abc-12-search-page`. The Linear ID in the name lets Linear link the branch.
+- One issue, one PR. Keep PRs small. Open as a draft, mark ready when checks pass.
+- The PR body starts with `Fixes ABC-12` (the Linear ID) so Linear links and closes the issue.
+- Never push to `main`. Never merge your own PR unless the PR has the `auto-merge` label, all checks are green (including `Merge gate`), it has no `needs-human` label, every review thread is resolved, and the latest Claude review ends "Verdict: ready to merge". Just before merging, re-run the gate (`gh workflow run merge-gate.yml --ref <branch> -f pr=<number>`) and wait for it to pass, because it can be stale. Never resolve a security thread you did not fix; leave it for a person.
+
+## Build and test
+
+- All checks: `./scripts/check.sh` (CI runs the same script).
+- <Install, run locally, and any other commands worth knowing.>
+
+## Reviews
+
+- Every PR gets a Claude review and a ChatGPT Codex review. Address both.
+- After 3 fix rounds, the fix workflow adds `needs-human`. Do not remove it yourself; a person does.
