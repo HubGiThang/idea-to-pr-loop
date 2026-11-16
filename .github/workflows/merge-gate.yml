@@ -1,8 +1,10 @@
-# A required-style check that stays red while a PR must not merge:
-# it has the needs-human label, or a review thread (from Claude, Codex or a person) is unresolved.
-# Self-merge rules in CLAUDE.md require every check to be green, so this blocks auto-merge.
+# A required check that stays red while a PR must not merge. It passes only when:
+# - the PR has no needs-human label (a design question is waiting on the spec's Design review), and
+# - no review thread (from Claude, Codex or a person) is unresolved, and
+# - the latest Claude review summary, written after the latest commit, ends "Verdict: ready to merge".
+# Make it a required check (docs/github.md) so GitHub auto-merge waits for it.
 # Resolving a thread fires no event, and labels added with GITHUB_TOKEN trigger no workflows, so the
-# fix workflow and anyone about to merge re-run this check with workflow_dispatch on the PR branch.
+# review and fix workflows re-run this check with workflow_dispatch on the PR branch.
 name: Merge gate
 
 on:
@@ -31,7 +33,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Check labels and review threads
+      - name: Check labels, review threads and the review verdict
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -40,11 +42,11 @@ jobs:
           owner="${REPO%/*}"; name="${REPO#*/}"
           labels=$(gh pr view "$PR" -R "$REPO" --json labels --jq '[.labels[].name] | join(",")')
           if echo ",$labels," | grep -q ",needs-human,"; then
-            echo "::error::This PR has the needs-human label. A person must check it and remove the label."
+            echo "::error::This PR has a design question waiting (needs-human). It clears when the spec is approved again in its Design review."
             exit 1
           fi
           # Count every unresolved thread, outdated or not: a fix push makes old threads outdated,
-          # including security threads deliberately left open for a person.
+          # including security threads still waiting for a second check.
           unresolved=$(gh api graphql --paginate -F owner="$owner" -F name="$name" -F pr="$PR" -f query='
             query($owner:String!,$name:String!,$pr:Int!,$endCursor:String){
               repository(owner:$owner,name:$name){
@@ -58,7 +60,26 @@ jobs:
             }' --jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved==false)] | length' \
             | awk '{s+=$1} END {print s+0}')
           if [ "$unresolved" -gt 0 ]; then
-            echo "::error::$unresolved review thread(s) are unresolved. Fix or answer each one and resolve it before merging."
+            echo "::error::$unresolved review thread(s) are unresolved. The fix workflow answers and resolves them."
             exit 1
           fi
-          echo "Merge gate passed: no needs-human label and no unresolved review threads."
+          # The latest Claude review summary must be newer than the latest commit and say ready to merge.
+          head_date=$(gh pr view "$PR" -R "$REPO" --json commits --jq '.commits[-1].committedDate')
+          verdict=$(gh pr view "$PR" -R "$REPO" --json comments --jq '
+            [.comments[] | select((.author.login | test("^claude"; "i")) and (.body | test("Verdict: (ready to merge|changes needed)")))]
+            | sort_by(.updatedAt // .createdAt) | last
+            | if . == null then "none" else "\(.updatedAt // .createdAt) \(if (.body | test("Verdict: ready to merge")) then "ready" else "changes" end)" end')
+          if [ "$verdict" = "none" ]; then
+            echo "::error::No Claude review verdict yet."
+            exit 1
+          fi
+          verdict_date="${verdict% *}"; verdict_word="${verdict##* }"
+          if [[ "$verdict_date" < "$head_date" ]]; then
+            echo "::error::The latest Claude review is older than the latest commit ($verdict_date < $head_date). Waiting for a new review."
+            exit 1
+          fi
+          if [ "$verdict_word" != "ready" ]; then
+            echo "::error::The latest Claude review says changes are needed."
+            exit 1
+          fi
+          echo "Merge gate passed: no design question, no unresolved threads, and the latest review says ready to merge."
