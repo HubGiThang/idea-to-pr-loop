@@ -4,9 +4,20 @@
 
 ## How work arrives
 
-- Specs live in Notion (Specs database). Work is cut into Linear issues in team <TEAM KEY>, one slice each.
-- Each Linear issue syncs to a GitHub issue. The label `claude` means Claude should build it.
-- Read the issue's acceptance criteria and the linked spec before writing code. If the spec link is missing or the criteria are unclear, comment on the issue with the question and stop.
+- The owner reviews early, not at PRs. Every feature, big or small, starts as a spec in Notion (Specs database) with a clickable mockup. Features with no screen get a preview of the behavior instead (example inputs and outputs, before and after, or a flow). The owner approves the spec and mockup together (Status: Design approved). That is their only review.
+- Approved specs are cut into Linear issues in team <TEAM KEY>, one slice each. Each issue has acceptance criteria, a `Mockup: <link>` line, and a Design section describing the screen or behavior it builds. A bug fix that only restores behavior that was already approved has the `bug-fix` label instead of a mockup.
+- Each Linear issue syncs to a GitHub issue. The label `claude` means Claude should build it. Without a mockup line or `bug-fix`, it is not built.
+- Build what the issue's acceptance criteria and Design section describe. Decide small open points yourself and note them in the PR body.
+
+## When to stop and ask
+
+Only three things go back to the owner, and they go to the spec's Design review in Notion, never to a PR review:
+
+1. The approved design or acceptance criteria cannot be built as approved (impossible, clashes with another feature, or needs a scope change).
+2. A security fix would change what people see or do.
+3. The work needs a hard-to-undo step the spec does not name: deleting or dropping data, secrets, DNS or hosting settings, payments, or launch switches.
+
+Everything else (review disagreements, failing checks, tooling problems) Claude settles. The workflows write the question as a "Design question" comment and add `needs-human`. Remove `needs-human` only after the spec's Design approved date is later than the question; then update the build to match.
 
 ## Git
 
@@ -19,8 +30,9 @@
 
 - Branch name: `claude/<linear-id-lowercase>-<short-slug>`, e.g. `claude/abc-12-search-page`. The Linear ID in the name lets Linear link the branch.
 - One issue, one PR. Keep PRs small. Open as a draft, mark ready when checks pass.
-- The PR body starts with `Fixes ABC-12` (the Linear ID) so Linear links and closes the issue.
-- Never push to `main`. Never merge your own PR unless the PR has the `auto-merge` label, all checks are green (including `Merge gate`), it has no `needs-human` label, every review thread is resolved, and the latest Claude review ends "Verdict: ready to merge". Just before merging, re-run the gate (`gh workflow run merge-gate.yml --ref <branch> -f pr=<number>`) and wait for it to pass, because it can be stale. Never resolve a security thread you did not fix; leave it for a person.
+- The PR body starts with `Fixes ABC-12` (the Linear ID), `GitHub issue: #N` and the issue's `Mockup: <link>` line, so Linear links and closes the issue and reviewers can find the design.
+- Never push to `main`. PRs merge through GitHub auto-merge once the required checks pass: `check` and `Merge gate` (no `needs-human`, no unresolved review thread, and the latest Claude review says "Verdict: ready to merge"). Never merge around them.
+- Never resolve a security thread unless a second, separate Claude check agrees it is fixed or a false alarm.
 
 ## Build and test
 
@@ -29,5 +41,5 @@
 
 ## Reviews
 
-- Every PR gets a Claude review and a ChatGPT Codex review. Address both.
-- After 3 fix rounds, the fix workflow adds `needs-human`. Do not remove it yourself; a person does.
+- Every PR gets a Claude review and a ChatGPT Codex review, both against the approved design. Address both: fix what is right, and reply with the reason where it isn't.
+- After 3 fix rounds with threads still open, the fix workflow closes the PR and starts one second attempt with a fresh approach. If that also runs out, it raises a scope question (`needs-human`).

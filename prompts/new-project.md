@@ -10,17 +10,20 @@ Set up the idea-to-pr-loop workflow from <OWNER/idea-to-pr-loop>, then start the
 Take it one step at a time: tell me what you are about to do before each step that
 changes something outside the repo, and wait for my go-ahead.
 
-1. Read the spec. If it is not marked Spec approved or later, or the acceptance criteria
-   are unclear, ask me and stop.
+1. Read the spec. If it is not marked Design approved or later, or it has no mockup,
+   make the mockup with prompts/spec-and-mockup.md and set it to Design review for me.
+   Don't build anything until I approve it.
 2. In the new repo, on a branch, add:
    - .github/workflows/ from idea-to-pr-loop, unchanged.
    - scripts/check.sh with the install, lint, typecheck, build and test commands for the
      stack the spec chooses, and any language setup ci.yml needs.
    - CLAUDE.md from CLAUDE.md.template, with our Linear team key and commands filled in.
    Open it as a draft PR and tell me when it is up.
-3. After I merge the setup PR, cut the spec into small Linear issues in team <TEAM KEY>,
-   one slice each, each with acceptance criteria, in a new Linear project named after
-   the product. Write the Linear project link back onto the Notion spec. Show me the
-   list before adding the `claude` label to any of them.
-4. Save the repo, Linear team, spec link and these rules to project memory.
+3. After I merge the setup PR, add the protect main ruleset and auto-merge as
+   docs/github.md describes (tell me first if you can't change repo settings).
+4. Cut the approved spec into small Linear issues in team <TEAM KEY>, one slice each,
+   in a new Linear project named after the product, as docs/linear.md describes (each
+   with the Mockup line, a Design section and acceptance criteria). Write the Linear
+   project link back onto the Notion spec, then add the `claude` label to them.
+5. Save the repo, Linear team, spec link and these rules to project memory.
 ```

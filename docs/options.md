@@ -7,11 +7,13 @@ By default Claude Code may add a `Co-Authored-By` line to commits and a footer t
 1. In each workflow, uncomment the `settings:` line under `anthropics/claude-code-action@v1`.
 2. In `CLAUDE.md`, uncomment the attribution rule under Git, so Claude also leaves it out of comments and files.
 
-## How much Claude may merge
+## How PRs merge
 
-- **Human merge (default):** don't create the `auto-merge` label. Claude builds, reviews and fixes; a person merges.
-- **Auto-merge:** add the `auto-merge` label to PRs whose spec has Autonomy = Auto-merge. A Claude session may then merge a PR once every check (including Merge gate) is green, every review thread is resolved, there is no `needs-human` label, and the latest Claude review ends "Verdict: ready to merge". Nothing in the GitHub Actions workflows merges on its own; the merge is done by a Claude session working on the repo (for example in a Claude project), following the rule in CLAUDE.md.
+- **Auto-merge (recommended):** set the repository variable `AUTO_MERGE` to `true` (Settings → Secrets and variables → Actions → Variables) and turn on **Allow auto-merge** (Settings → General). `claude.yml` then turns on GitHub auto-merge for each PR it opens, and GitHub merges it once the required checks pass. Make both `check` and `Merge gate` required first ([docs/github.md](github.md#protect-main)): without required checks, GitHub would merge at once.
+- **Human merge:** leave `AUTO_MERGE` unset. Claude builds, reviews and fixes; a person merges. Useful for a new repo until you trust its checks.
+
+A merge set up with the built-in `GITHUB_TOKEN` starts no workflows on `main`. If `main` deploys through a workflow, add a fine-grained token with Contents and Pull requests write access as the secret `AUTO_MERGE_TOKEN`; the merge is then made as its owner and the deploy runs.
 
 ## Number of fix rounds
 
-`claude-fix.yml` stops after 3 rounds. To change it, edit the `for i in 1 2 3` loop, the `-ge 3` check and the two `'3'` comparisons in that file.
+`claude-fix.yml` runs at most 3 rounds per attempt, and one second attempt. To change the rounds, edit the `for i in 1 2 3` loop, the `-ge 3` check and the `'3'` comparisons in that file.

@@ -1,5 +1,12 @@
 # Claude builds Linear issues and answers @claude mentions.
-# - An issue labelled `claude` (synced from Linear) is implemented end to end: branch, code, tests, draft PR.
+# - An issue labelled `claude` (synced from Linear) is built end to end: branch, code, tests, PR. It must
+#   link its approved mockup (a "Mockup: <url>" line) unless it is labelled `bug-fix` (restores behavior
+#   that was already approved). Without one, nothing is built.
+# - A build that hits a design question writes it down instead of guessing; the issue gets `needs-human`
+#   and the question goes back to the spec's Design review.
+# - With the repo variable AUTO_MERGE set to true, the PR gets GitHub auto-merge, so it merges once the
+#   required checks (`check` and `Merge gate`) pass.
+# - The fix workflow can start a second attempt (workflow_dispatch) when a first PR runs out of fix rounds.
 # - A comment containing @claude on an issue or PR gets Claude to act on it.
 # Runs on GitHub's servers with your Claude subscription (secret CLAUDE_CODE_OAUTH_TOKEN, from `claude setup-token`).
 name: Claude
@@ -11,6 +18,19 @@ on:
     types: [created]
   pull_request_review_comment:
     types: [created]
+  workflow_dispatch:
+    inputs:
+      issue:
+        description: Issue number to build
+        required: true
+      attempt:
+        description: Build attempt (2 = a fresh approach after the first PR ran out of fix rounds)
+        required: false
+        default: '1'
+      previous_pr:
+        description: The closed first-attempt PR, for a second attempt
+        required: false
+        default: ''
 
 permissions:
   contents: write
@@ -20,38 +40,133 @@ permissions:
   actions: read
 
 concurrency:
-  group: claude-${{ github.event.issue.number || github.event.pull_request.number }}
+  group: claude-${{ github.event.issue.number || github.event.pull_request.number || inputs.issue }}
   cancel-in-progress: false
 
 jobs:
   build:
-    # A Linear issue synced to GitHub with the `claude` label: build it and open a draft PR.
-    if: github.event_name == 'issues' && github.event.label.name == 'claude'
+    # A Linear issue synced to GitHub with the `claude` label, or a second attempt started by the fix workflow.
+    if: |
+      (github.event_name == 'issues' && github.event.label.name == 'claude') ||
+      github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    env:
+      REPO: ${{ github.repository }}
+      ISSUE: ${{ github.event.issue.number || inputs.issue }}
+      ATTEMPT: ${{ inputs.attempt || '1' }}
+      PREVIOUS_PR: ${{ inputs.previous_pr || '' }}
+      OUT: ${{ github.workspace }}/.build-out
     steps:
+      - name: Check the design is approved
+        id: design
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          body=$(gh issue view "$ISSUE" -R "$REPO" --json body --jq .body)
+          labels=$(gh issue view "$ISSUE" -R "$REPO" --json labels --jq '[.labels[].name] | join(",")')
+          title=$(gh issue view "$ISSUE" -R "$REPO" --json title --jq .title)
+          { echo "title<<EOF_TITLE"; echo "$title"; echo "EOF_TITLE"; } >> "$GITHUB_OUTPUT"
+          if echo ",$labels," | grep -q ",needs-human,"; then
+            echo "A design question is waiting on this issue; not building."
+            echo "ok=false" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          if echo "$body" | grep -qE '^Mockup: https?://' || echo ",$labels," | grep -q ",bug-fix,"; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          gh issue comment "$ISSUE" -R "$REPO" --body "Not building yet: this issue has no approved mockup. Add a line \`Mockup: <link>\` from the spec once its design is approved (or the \`bug-fix\` label if it only restores behavior that was already approved), then add the \`claude\` label again."
+          echo "ok=false" >> "$GITHUB_OUTPUT"
+
       - uses: actions/checkout@v4
+        if: steps.design.outputs.ok == 'true'
         with:
           fetch-depth: 0
 
+      - name: Prepare
+        if: steps.design.outputs.ok == 'true'
+        run: |
+          mkdir -p "$OUT"
+          echo ".build-out/" >> .git/info/exclude
+
       - uses: anthropics/claude-code-action@v1
+        id: claude
+        if: steps.design.outputs.ok == 'true'
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           # Optional: uncomment to keep Claude attribution out of commits and PRs (see docs/options.md).
           # settings: '{"includeCoAuthoredBy": false, "attribution": {"commit": "", "pr": ""}}'
           prompt: |
             REPO: ${{ github.repository }}
-            ISSUE NUMBER: ${{ github.event.issue.number }}
-            ISSUE TITLE: ${{ github.event.issue.title }}
+            ISSUE NUMBER: ${{ env.ISSUE }}
+            ISSUE TITLE: ${{ steps.design.outputs.title }}
+            ATTEMPT: ${{ env.ATTEMPT }}
 
-            Build this issue end to end, following CLAUDE.md.
+            Build this issue end to end, following CLAUDE.md. The design was approved before this issue was cut:
+            build what the issue's acceptance criteria and Design section describe. The issue links the mockup;
+            if you cannot open the link, the Design section is the description to follow.
             1. Read the issue body and its comments. The Linear ID (for example ABC-12) is in the linear-linkback comment.
-            2. Create a branch named claude/<linear-id-lowercase>-<short-slug>, make the change, and run ./scripts/check.sh (CLAUDE.md lists any other checks).
+            2. Create a branch named claude/<linear-id-lowercase>-<short-slug>${{ env.ATTEMPT == '2' && '-v2' || '' }}, make the change,
+               and run ./scripts/check.sh (CLAUDE.md lists any other checks).
             3. Commit with a plain imperative message, and push the branch.
-            4. Open a draft PR with `gh pr create --draft --base main`. The body starts with "Fixes <Linear ID>", then says what changed and how it was checked.
-            5. If the checks pass, mark it ready with `gh pr ready`.
-            If the acceptance criteria are unclear, comment on the issue with your question and stop.
-          claude_args: --max-turns 60 --allowedTools "Edit,Write,Read,Glob,Grep,Bash(git:*),Bash(gh pr create:*),Bash(gh pr ready:*),Bash(gh issue view:*),Bash(gh issue comment:*),Bash(./scripts/check.sh)"
+            4. Open a draft PR with `gh pr create --draft --base main`. The body starts with three lines:
+               "Fixes <Linear ID>", "GitHub issue: #${{ env.ISSUE }}", and the issue's "Mockup: <link>" line (if it has one).
+               Then say in plain words what changed and how it was checked.
+            5. If the checks pass, mark it ready with `gh pr ready`. Write the PR number alone to ${{ env.OUT }}/pr.txt.
+            ${{ env.ATTEMPT == '2' && format('This is a second attempt. The first PR #{0} was closed after three fix rounds left review threads open. Read it and its review threads with `gh pr view {0} --comments` and take a different approach that avoids those problems.', env.PREVIOUS_PR) || '' }}
+
+            Decide small open points yourself and note them in the PR body. Stop and ask only when the answer
+            needs the owner's judgment. In that case do not open a PR; write the question to
+            ${{ env.OUT }}/design-question.md (under 15 lines: what is blocked, two or three options, and your
+            recommendation) and stop. It needs the owner's judgment only when:
+            - the design or acceptance criteria cannot be built as approved (impossible, clashes with another
+              feature, or needs a scope change), or
+            - the work needs a hard-to-undo step the issue does not name: deleting or dropping data, secrets,
+              DNS or hosting settings, payments, or launch switches.
+          claude_args: --max-turns 60 --allowedTools "Edit,Write,Read,Glob,Grep,Bash(git:*),Bash(gh pr create:*),Bash(gh pr ready:*),Bash(gh pr view:*),Bash(gh issue view:*),Bash(./scripts/check.sh)"
+
+      # A design question goes back to the owner's design review, never to a PR.
+      - name: Raise a design question
+        if: always() && steps.design.outputs.ok == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          [ -s "$OUT/design-question.md" ] || exit 0
+          gh label create needs-human -R "$REPO" --color B60205 --force
+          gh issue edit "$ISSUE" -R "$REPO" --add-label needs-human
+          {
+            echo "## Design question"
+            echo
+            head -c 6000 "$OUT/design-question.md"
+            echo
+            echo
+            echo "This goes back to the spec's Design review. Once the spec is approved again, remove needs-human and add the claude label to rebuild."
+          } > "$OUT/comment.md"
+          gh issue comment "$ISSUE" -R "$REPO" --body-file "$OUT/comment.md"
+
+      - name: Label and auto-merge the PR
+        if: always() && steps.design.outputs.ok == 'true' && steps.claude.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MERGE_TOKEN: ${{ secrets.AUTO_MERGE_TOKEN }}
+          AUTO_MERGE: ${{ vars.AUTO_MERGE }}
+        run: |
+          [ -s "$OUT/pr.txt" ] || { echo "No PR was opened."; exit 0; }
+          pr=$(grep -oE '[0-9]+' "$OUT/pr.txt" | head -1)
+          [ -n "$pr" ] || exit 0
+          # Only act on an open PR that says it builds this issue.
+          info=$(gh pr view "$pr" -R "$REPO" --json state,isDraft,body --jq '"\(.state) \(.isDraft) \(.body | test("GitHub issue: #'"$ISSUE"'\\b"))"')
+          read -r state draft matches <<< "$info"
+          if [ "$state" != "OPEN" ] || [ "$matches" != "true" ]; then echo "PR #$pr does not match issue #$ISSUE; skipping."; exit 0; fi
+          if [ "$ATTEMPT" = "2" ]; then
+            gh label create attempt-2 -R "$REPO" --color FBCA04 --force
+            gh pr edit "$pr" -R "$REPO" --add-label attempt-2
+          fi
+          if [ "$AUTO_MERGE" = "true" ] && [ "$draft" = "false" ]; then
+            # A merge set up with GITHUB_TOKEN starts no workflows on main (deploys, for example).
+            # With the optional AUTO_MERGE_TOKEN secret set, the merge is made as that token's owner instead.
+            GH_TOKEN="${MERGE_TOKEN:-$GH_TOKEN}" gh pr merge "$pr" -R "$REPO" --auto --squash \
+              || echo "::warning::Could not turn on auto-merge. Check that the repo allows auto-merge and requires the check and Merge gate checks."
+          fi
 
   mention:
     # Anyone (not a bot) writing @claude on an issue or PR.

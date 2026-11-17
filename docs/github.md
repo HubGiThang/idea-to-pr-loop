@@ -11,17 +11,19 @@ Do these once per repo.
 
 ## Files
 
-Copy `.github/workflows/`, `scripts/check.sh` and `CLAUDE.md.template` (renamed to `CLAUDE.md`) into the repo, then fill in `scripts/check.sh` and the CLAUDE.md placeholders. Labels (`fix-round-1..3`, `needs-human`) are created by the workflows the first time they are needed. Create `auto-merge` yourself if you use Auto-merge.
+Copy `.github/workflows/`, `scripts/check.sh` and `CLAUDE.md.template` (renamed to `CLAUDE.md`) into the repo, then fill in `scripts/check.sh` and the CLAUDE.md placeholders. Labels (`fix-round-1..3`, `needs-human`, `attempt-2`) are created by the workflows the first time they are needed. Create `bug-fix` yourself (it also comes over from Linear).
 
 ## Protect main
 
-After the first PR has run CI (so the `check` job shows up as a choice), go to Settings → Rules → Rulesets → New branch ruleset:
+After the first PR has run CI and the Merge gate (so the `check` and `gate` jobs show up as choices), go to Settings → Rules → Rulesets → New branch ruleset:
 
 - Name `protect main`, enforcement Active, target the default branch.
 - Restrict deletions.
 - Block force pushes.
 - Require a pull request before merging (0 approvals is fine for a solo repo).
-- Require status checks to pass, and add `check`.
+- Require status checks to pass, and add `check` and `Merge gate`'s job `gate`.
 - Leave the bypass list empty.
 
-`Merge gate` does not need to be required here: Claude's merge rule in CLAUDE.md already waits for it, and requiring it would also block people from merging a PR they have decided on.
+Then turn on auto-merge ([docs/options.md](options.md#how-prs-merge)): Settings → General → **Allow auto-merge**, and the repository variable `AUTO_MERGE` = `true`.
+
+`Merge gate` is what keeps a PR from merging on its own while a design question is open (`needs-human`), a review thread is unresolved, or the latest Claude review is missing, stale or says changes are needed. The review and fix workflows re-run it after they act, because those changes fire no event it listens to.
