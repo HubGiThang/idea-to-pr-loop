@@ -220,6 +220,7 @@ jobs:
         run: |
           # Two reviews can queue up behind each other; the first may already have closed this PR.
           [ "$(gh pr view "$PR" -R "$REPO" --json state --jq .state)" = OPEN ] || exit 0
+          mkdir -p "$OUT"
           owner="${REPO%/*}"; name="${REPO#*/}"
           question=""
           [ -s "$OUT/design-question.md" ] && question=$(head -c 6000 "$OUT/design-question.md")
