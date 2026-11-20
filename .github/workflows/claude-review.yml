@@ -29,7 +29,12 @@ jobs:
         with:
           fetch-depth: 1
 
+      - name: Note the commit under review
+        id: start
+        run: echo "at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
       - uses: anthropics/claude-code-action@v1
+        id: claude
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           # PRs are opened by claude[bot], so the action must accept bot actors.
@@ -51,6 +56,29 @@ jobs:
             Post findings as inline comments on the exact lines, then one summary comment that ends with either
             "Verdict: ready to merge" or "Verdict: changes needed". The Merge gate reads that last line.
           claude_args: --max-turns 30 --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh issue view:*)"
+
+      # Record the verdict as a "Claude verdict" status on the exact commit that was reviewed, so the Merge gate
+      # never takes an old verdict for a newer commit. Only claude[bot]'s summary from this run counts.
+      - name: Record the verdict on the reviewed commit
+        if: always() && steps.claude.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          SHA: ${{ github.event.pull_request.head.sha }}
+          SINCE: ${{ steps.start.outputs.at }}
+        run: |
+          word=$(gh api --paginate "repos/$REPO/issues/$PR/comments" | jq -rs --arg since "$SINCE" '
+            [add[] | select(.user.login == "claude[bot]" and .user.type == "Bot" and .updated_at >= $since
+              and (.body | test("Verdict: (ready to merge|changes needed)")))]
+            | sort_by(.updated_at) | last
+            | if . == null then "none" else ([.body | scan("Verdict: (ready to merge|changes needed)")] | last | .[0]) end')
+          case "$word" in
+            "ready to merge") state=success; desc="Ready to merge" ;;
+            "changes needed") state=failure; desc="Changes needed" ;;
+            *) echo "::warning::No verdict from this review run."; exit 0 ;;
+          esac
+          gh api "repos/$REPO/statuses/$SHA" -f state="$state" -f context="Claude verdict" -f description="$desc" > /dev/null
 
       # Post the "Merge gate" status. The script is read from the default branch, so a PR can't change its own gate.
       - name: Update the merge gate

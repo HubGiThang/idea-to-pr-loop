@@ -2,7 +2,8 @@
 # Merge gate: posts a "Merge gate" commit status on a PR's head commit. It passes only when
 # - the PR has no needs-human label (a design question is waiting on the spec's Design review), and
 # - no review thread (from Claude, Codex or a person) is unresolved, and
-# - the latest Claude review summary, written after the latest commit, ends "Verdict: ready to merge".
+# - the Claude review of the head commit ended "Verdict: ready to merge" (the review job records that as a
+#   "Claude verdict" commit status on the exact commit it reviewed).
 #
 # It runs as the last step of the Claude review and Claude fix jobs (which are running anyway), not as a
 # workflow of its own: each workflow job is billed as at least one minute, and the gate takes seconds.
@@ -51,23 +52,15 @@ if [ -n "${NO_REVIEW_LABEL:-}" ] && echo ",$labels," | grep -q ",$NO_REVIEW_LABE
   exit 0
 fi
 
-# The latest Claude review summary must be newer than the latest commit, and its last verdict line must say
-# ready to merge (a summary may quote the phrase before giving its real verdict).
-head_date=$(gh pr view "$PR" -R "$REPO" --json commits --jq '.commits[-1].committedDate')
-verdict=$(gh pr view "$PR" -R "$REPO" --json comments --jq '
-  [.comments[] | select((.author.login | test("^claude"; "i")) and (.body | test("Verdict: (ready to merge|changes needed)")))]
-  | sort_by(.updatedAt // .createdAt) | last
-  | if . == null then "none" else "\(.updatedAt // .createdAt) \(if ([.body | scan("Verdict: (ready to merge|changes needed)")] | last | .[0]) == "ready to merge" then "ready" else "changes" end)" end')
+# The Claude review of this exact commit must say ready to merge. The review job writes the "Claude verdict"
+# status on the commit it reviewed, so a verdict never carries over to a newer commit.
+verdict=$(gh api "repos/$REPO/commits/$sha/statuses" --paginate \
+  | jq -rs '[add[] | select(.context == "Claude verdict")] | sort_by(.created_at) | last | .state // "none"')
 if [ "$verdict" = "none" ]; then
-  post failure "No Claude review verdict yet."
+  post failure "No Claude review verdict for the latest commit yet."
   exit 0
 fi
-verdict_date="${verdict% *}"; verdict_word="${verdict##* }"
-if [[ "$verdict_date" < "$head_date" ]]; then
-  post failure "The latest Claude review is older than the latest commit. Waiting for a new review."
-  exit 0
-fi
-if [ "$verdict_word" != "ready" ]; then
+if [ "$verdict" != "success" ]; then
   post failure "The latest Claude review says changes are needed."
   exit 0
 fi

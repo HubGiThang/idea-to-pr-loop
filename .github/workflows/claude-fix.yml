@@ -71,8 +71,10 @@ jobs:
             echo "run=false" >> "$GITHUB_OUTPUT"; exit 0
           fi
           # A round already ran on this commit: let that round's fixes land before starting another.
-          done_here=$(gh api "repos/$REPO/commits/$sha/statuses" --jq '[.[] | select(.context=="claude-fix-round")] | length')
-          if [ "$done_here" -gt 0 ]; then
+          # Only a round that finished counts: a failed run leaves its status pending, so the commit can be retried.
+          done_here=$(gh api "repos/$REPO/commits/$sha/statuses" --paginate \
+            | jq -s '[add[] | select(.context=="claude-fix-round")] | sort_by(.created_at) | last | .state == "success"')
+          if [ "$done_here" = true ]; then
             echo "A fix round already ran on $sha; skipping."
             echo "run=false" >> "$GITHUB_OUTPUT"; exit 0
           fi
@@ -90,8 +92,8 @@ jobs:
           fi
           gh label create "fix-round-$((n+1))" -R "$REPO" --color C5DEF5 --force
           gh pr edit "$PR" -R "$REPO" --add-label "fix-round-$((n+1))"
-          gh api "repos/$REPO/statuses/$sha" -f state=success -f context=claude-fix-round \
-            -f description="Fix round $((n+1)) ran on this commit" > /dev/null
+          gh api "repos/$REPO/statuses/$sha" -f state=pending -f context=claude-fix-round \
+            -f description="Fix round $((n+1)) is running on this commit" > /dev/null
           echo "round=$((n+1))" >> "$GITHUB_OUTPUT"
           echo "run=true" >> "$GITHUB_OUTPUT"
 
@@ -211,6 +213,16 @@ jobs:
             gh api graphql -f query='mutation($id:ID!){ resolveReviewThread(input:{threadId:$id}){ thread{ isResolved } } }' -f id="$id" > /dev/null \
               && echo "Resolved $id"
           done
+
+      - name: Mark this fix round finished
+        if: always() && steps.round.outputs.run == 'true' && steps.claude.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ steps.round.outputs.sha }}
+          ROUND: ${{ steps.round.outputs.round }}
+        run: |
+          gh api "repos/$REPO/statuses/$SHA" -f state=success -f context=claude-fix-round \
+            -f description="Fix round $ROUND ran on this commit" > /dev/null
 
       - name: Raise a design question, or start a second attempt
         if: always() && (steps.round.outputs.run == 'true' || steps.round.outputs.exhausted == 'true')
