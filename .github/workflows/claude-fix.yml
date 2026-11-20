@@ -81,8 +81,12 @@ jobs:
             if echo ",$labels," | grep -q ",fix-round-$i,"; then n=$i; fi
           done
           if [ "$n" -ge 3 ]; then
-            echo "All three fix rounds have run; the last round already handed off or restarted."
-            echo "run=false" >> "$GITHUB_OUTPUT"; exit 0
+            # All three rounds have run. A review after the last round may still leave threads open, so the
+            # hand-off step checks again and restarts or raises the scope question if any are.
+            echo "All three fix rounds have run; checking for threads left open."
+            echo "round=3" >> "$GITHUB_OUTPUT"
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "exhausted=true" >> "$GITHUB_OUTPUT"; exit 0
           fi
           gh label create "fix-round-$((n+1))" -R "$REPO" --color C5DEF5 --force
           gh pr edit "$PR" -R "$REPO" --add-label "fix-round-$((n+1))"
@@ -209,11 +213,13 @@ jobs:
           done
 
       - name: Raise a design question, or start a second attempt
-        if: always() && steps.round.outputs.run == 'true'
+        if: always() && (steps.round.outputs.run == 'true' || steps.round.outputs.exhausted == 'true')
         env:
           GH_TOKEN: ${{ github.token }}
           ROUND: ${{ steps.round.outputs.round }}
         run: |
+          # Two reviews can queue up behind each other; the first may already have closed this PR.
+          [ "$(gh pr view "$PR" -R "$REPO" --json state --jq .state)" = OPEN ] || exit 0
           owner="${REPO%/*}"; name="${REPO#*/}"
           question=""
           [ -s "$OUT/design-question.md" ] && question=$(head -c 6000 "$OUT/design-question.md")
