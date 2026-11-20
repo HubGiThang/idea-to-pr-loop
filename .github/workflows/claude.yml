@@ -93,6 +93,8 @@ jobs:
         if: steps.design.outputs.ok == 'true'
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # A second attempt is dispatched by claude-fix.yml with the workflow token, so it runs as this bot.
+          allowed_bots: 'github-actions[bot]'
           # Optional: uncomment to keep Claude attribution out of commits and PRs (see docs/options.md).
           # settings: '{"includeCoAuthoredBy": false, "attribution": {"commit": "", "pr": ""}}'
           prompt: |

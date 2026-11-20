@@ -70,24 +70,45 @@ jobs:
           if echo ",$labels," | grep -q ",needs-human,"; then
             echo "run=false" >> "$GITHUB_OUTPUT"; exit 0
           fi
-          # A round already ran on this commit: let that round's fixes land before starting another.
-          done_here=$(gh api "repos/$REPO/commits/$sha/statuses" --jq '[.[] | select(.context=="claude-fix-round")] | length')
-          if [ "$done_here" -gt 0 ]; then
-            echo "A fix round already ran on $sha; skipping."
+          # Claude can't review or push workflow changes, so those PRs are merged by hand: don't spend rounds.
+          if gh pr diff "$PR" -R "$REPO" --name-only | grep -q '^\.github/workflows/'; then
+            echo "This PR changes workflow files, so it is merged by hand; no fix round."
             echo "run=false" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          # Several reviews on one commit share a round: when a round already finished on this commit and left
+          # no thread open, skip. A later review that opened new threads on the same commit starts the next
+          # round. Only a finished round counts: a failed run leaves its status pending, so it can be retried.
+          done_here=$(gh api "repos/$REPO/commits/$sha/statuses" --paginate \
+            | jq -s '[add[] | select(.context=="claude-fix-round")] | sort_by(.created_at) | last | .state == "success"')
+          if [ "$done_here" = true ]; then
+            owner="${REPO%/*}"; name="${REPO#*/}"
+            open=$(gh api graphql --paginate -F owner="$owner" -F name="$name" -F pr="$PR" -f query='
+              query($owner:String!,$name:String!,$pr:Int!,$endCursor:String){
+                repository(owner:$owner,name:$name){ pullRequest(number:$pr){
+                  reviewThreads(first:100, after:$endCursor){ nodes{ isResolved } pageInfo{ hasNextPage endCursor } } } }
+              }' --jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved==false)] | length' \
+              | awk '{s+=$1} END {print s+0}')
+            if [ "$open" -eq 0 ]; then
+              echo "A fix round already ran on $sha and no thread is open; skipping."
+              echo "run=false" >> "$GITHUB_OUTPUT"; exit 0
+            fi
           fi
           n=0
           for i in 1 2 3; do
             if echo ",$labels," | grep -q ",fix-round-$i,"; then n=$i; fi
           done
           if [ "$n" -ge 3 ]; then
-            echo "All three fix rounds have run; the last round already handed off or restarted."
-            echo "run=false" >> "$GITHUB_OUTPUT"; exit 0
+            # All three rounds have run. A review after the last round may still leave threads open, so the
+            # hand-off step checks again and restarts or raises the scope question if any are.
+            echo "All three fix rounds have run; checking for threads left open."
+            echo "round=3" >> "$GITHUB_OUTPUT"
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "exhausted=true" >> "$GITHUB_OUTPUT"; exit 0
           fi
           gh label create "fix-round-$((n+1))" -R "$REPO" --color C5DEF5 --force
           gh pr edit "$PR" -R "$REPO" --add-label "fix-round-$((n+1))"
-          gh api "repos/$REPO/statuses/$sha" -f state=success -f context=claude-fix-round \
-            -f description="Fix round $((n+1)) ran on this commit" > /dev/null
+          gh api "repos/$REPO/statuses/$sha" -f state=pending -f context=claude-fix-round \
+            -f description="Fix round $((n+1)) is running on this commit" > /dev/null
           echo "round=$((n+1))" >> "$GITHUB_OUTPUT"
           echo "run=true" >> "$GITHUB_OUTPUT"
 
@@ -208,12 +229,25 @@ jobs:
               && echo "Resolved $id"
           done
 
+      - name: Mark this fix round finished
+        if: always() && steps.round.outputs.run == 'true' && steps.claude.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ steps.round.outputs.sha }}
+          ROUND: ${{ steps.round.outputs.round }}
+        run: |
+          gh api "repos/$REPO/statuses/$SHA" -f state=success -f context=claude-fix-round \
+            -f description="Fix round $ROUND ran on this commit" > /dev/null
+
       - name: Raise a design question, or start a second attempt
-        if: always() && steps.round.outputs.run == 'true'
+        if: always() && (steps.round.outputs.run == 'true' || steps.round.outputs.exhausted == 'true')
         env:
           GH_TOKEN: ${{ github.token }}
           ROUND: ${{ steps.round.outputs.round }}
         run: |
+          # Two reviews can queue up behind each other; the first may already have closed this PR.
+          [ "$(gh pr view "$PR" -R "$REPO" --json state --jq .state)" = OPEN ] || exit 0
+          mkdir -p "$OUT"
           owner="${REPO%/*}"; name="${REPO#*/}"
           question=""
           [ -s "$OUT/design-question.md" ] && question=$(head -c 6000 "$OUT/design-question.md")
@@ -234,8 +268,12 @@ jobs:
               gh workflow run claude.yml -R "$REPO" --ref main -f issue="$issue" -f attempt=2 -f previous_pr="$PR"
               exit 0
             fi
+            if [ -z "$issue" ]; then
+              question="Three fix rounds left $open review thread(s) open, and this PR has no linked issue to start a second attempt from, so a person needs to settle them."
+            else
             # A second attempt also ran out of rounds: the slice was cut wrong. That is a scope question.
             question="Two attempts each ran three fix rounds and left review threads open, so this slice may be cut wrong or too large. Options: split it into smaller issues, change the approach in the spec, or drop the part the reviewers keep flagging."
+            fi
             [ -s "$OUT/open-threads.md" ] && question="$question"$'\n\nStill open:\n'"$(head -c 4000 "$OUT/open-threads.md")"
           fi
           [ -n "$question" ] || exit 0
@@ -249,6 +287,29 @@ jobs:
             echo "This goes back to the spec's Design review in Notion. Once the spec is approved again, a Claude session updates the build and removes needs-human."
           } > "$OUT/comment.md"
           gh pr comment "$PR" -R "$REPO" --body-file "$OUT/comment.md"
+
+      # Threads settled without a commit (false alarms answered) leave the old "changes needed" verdict on the
+      # same commit, and the review only runs on pushes. Ask for a fresh review of that commit. Each such review
+      # can only start another counted round, so this stays bounded by the three rounds.
+      - name: Ask for a fresh review when threads were settled without a commit
+        if: always() && steps.round.outputs.run == 'true' && steps.claude.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ steps.round.outputs.sha }}
+        run: |
+          [ "$(gh pr view "$PR" -R "$REPO" --json state,headRefOid --jq '.state + " " + .headRefOid')" = "OPEN $SHA" ] || exit 0
+          owner="${REPO%/*}"; name="${REPO#*/}"
+          open=$(gh api graphql --paginate -F owner="$owner" -F name="$name" -F pr="$PR" -f query='
+            query($owner:String!,$name:String!,$pr:Int!,$endCursor:String){
+              repository(owner:$owner,name:$name){ pullRequest(number:$pr){
+                reviewThreads(first:100, after:$endCursor){ nodes{ isResolved } pageInfo{ hasNextPage endCursor } } } }
+            }' --jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved==false)] | length' \
+            | awk '{s+=$1} END {print s+0}')
+          [ "$open" -eq 0 ] || exit 0
+          verdict=$(gh api "repos/$REPO/commits/$SHA/statuses" --paginate \
+            | jq -rs '[add[] | select(.context == "Claude verdict")] | sort_by(.created_at) | last | .state // "none"')
+          [ "$verdict" = failure ] || exit 0
+          gh workflow run claude-review.yml -R "$REPO" --ref "${{ github.event.repository.default_branch }}" -f pr="$PR"
 
       # Labels, replies and resolved threads change the gate, and so can a review that skipped its fix round
       # (for example a Codex review on a commit that already had one). Post the "Merge gate" status.

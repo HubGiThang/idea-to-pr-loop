@@ -1,12 +1,18 @@
 # Claude reviews every ready PR and every new push to it, against the issue's acceptance criteria and
 # the approved design. ChatGPT Codex reviews the same PRs through its own GitHub integration (turned on in
 # Codex settings), so each PR gets two independent reviews. Its verdict line feeds the Merge gate,
-# which this job posts as a commit status when it finishes.
+# which this job posts as a commit status when it finishes. The fix workflow also starts it by hand
+# (workflow_dispatch) after it settles every thread without a new commit.
 name: Claude review
 
 on:
   pull_request:
     types: [opened, synchronize, ready_for_review, reopened]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: PR number to review
+        required: true
 
 permissions:
   contents: read
@@ -16,30 +22,50 @@ permissions:
   statuses: write
 
 concurrency:
-  group: claude-review-${{ github.event.pull_request.number }}
+  group: claude-review-${{ github.event.pull_request.number || inputs.pr }}
   cancel-in-progress: true
 
 jobs:
   review:
-    if: github.event.pull_request.draft == false && github.event.pull_request.state == 'open'
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.pull_request.draft == false && github.event.pull_request.state == 'open')
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      PR: ${{ github.event.pull_request.number || inputs.pr }}
     steps:
+      - name: Note the commit under review
+        id: start
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          echo "at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+          read -r state draft sha < <(gh pr view "$PR" -R "$REPO" --json state,isDraft,headRefOid --jq '"\(.state) \(.isDraft) \(.headRefOid)"')
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          if [ "$state" = OPEN ] && [ "$draft" = false ]; then echo "ok=true" >> "$GITHUB_OUTPUT"; else echo "ok=false" >> "$GITHUB_OUTPUT"; fi
+
       - uses: actions/checkout@v4
+        if: steps.start.outputs.ok == 'true'
         with:
+          ref: ${{ steps.start.outputs.sha }}
           fetch-depth: 1
 
       - uses: anthropics/claude-code-action@v1
+        id: claude
+        if: steps.start.outputs.ok == 'true'
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           # PRs are opened by claude[bot], so the action must accept bot actors.
           allowed_bots: '*'
           # Optional: uncomment to keep Claude attribution out of commits and PRs (see docs/options.md).
           # settings: '{"includeCoAuthoredBy": false, "attribution": {"commit": "", "pr": ""}}'
-          track_progress: true
+          # Progress tracking needs a pull_request event; a hand-started review posts its summary with gh pr comment.
+          track_progress: ${{ github.event_name == 'pull_request' }}
           prompt: |
             REPO: ${{ github.repository }}
-            PR NUMBER: ${{ github.event.pull_request.number }}
+            PR NUMBER: ${{ env.PR }}
 
             Review this pull request against the linked issue: its acceptance criteria and its Design section,
             which describes the approved mockup screen this PR builds (the PR body links both). The design was
@@ -52,13 +78,34 @@ jobs:
             "Verdict: ready to merge" or "Verdict: changes needed". The Merge gate reads that last line.
           claude_args: --max-turns 30 --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh issue view:*)"
 
+      # Record the verdict as a "Claude verdict" status on the exact commit that was reviewed, so the Merge gate
+      # never takes an old verdict for a newer commit. Only claude[bot]'s summary from this run counts.
+      - name: Record the verdict on the reviewed commit
+        if: always() && steps.claude.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ steps.start.outputs.sha }}
+          SINCE: ${{ steps.start.outputs.at }}
+        run: |
+          word=$(gh api --paginate "repos/$REPO/issues/$PR/comments" | jq -rs --arg since "$SINCE" '
+            [add[] | select(.user.login == "claude[bot]" and .user.type == "Bot" and .updated_at >= $since
+              and (.body | test("Verdict: (ready to merge|changes needed)")))]
+            | sort_by(.updated_at) | last
+            | if . == null then "none" else ([.body | scan("Verdict: (ready to merge|changes needed)")] | last | .[0]) end')
+          case "$word" in
+            "ready to merge") state=success; desc="Ready to merge" ;;
+            "changes needed") state=failure; desc="Changes needed" ;;
+            *) echo "::warning::No verdict from this review run."; exit 0 ;;
+          esac
+          gh api "repos/$REPO/statuses/$SHA" -f state="$state" -f context="Claude verdict" -f description="$desc" > /dev/null
+
       # Post the "Merge gate" status. The script is read from the default branch, so a PR can't change its own gate.
       - name: Update the merge gate
         if: always()
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
-          PR: ${{ github.event.pull_request.number }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           NO_REVIEW_LABEL: ${{ vars.NO_REVIEW_LABEL }}
         run: |
