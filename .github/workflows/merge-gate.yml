@@ -3,6 +3,7 @@
 # jobs don't:
 # - someone adds or removes `needs-human` by hand (labels the workflows add with their own token start no
 #   workflow, so those jobs post the gate themselves),
+# - an approval, which may carry inline comments (the fix job only handles other reviews),
 # - a manual re-run: gh workflow run merge-gate.yml -f pr=<number>, and
 # - PRs that skip the Claude review on purpose: set the repository variable NO_REVIEW_LABEL to their label
 #   (for example `form`), and those PRs get the gate on each push and each review instead.
@@ -34,6 +35,7 @@ jobs:
     if: |
       github.event_name == 'workflow_dispatch' ||
       github.event.label.name == 'needs-human' ||
+      (github.event_name == 'pull_request_review' && github.event.review.state == 'approved') ||
       (github.event.action != 'labeled' && github.event.action != 'unlabeled' && vars.NO_REVIEW_LABEL != '' &&
        contains(github.event.pull_request.labels.*.name, vars.NO_REVIEW_LABEL))
     runs-on: ubuntu-latest

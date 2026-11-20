@@ -51,12 +51,13 @@ if [ -n "${NO_REVIEW_LABEL:-}" ] && echo ",$labels," | grep -q ",$NO_REVIEW_LABE
   exit 0
 fi
 
-# The latest Claude review summary must be newer than the latest commit and say ready to merge.
+# The latest Claude review summary must be newer than the latest commit, and its last verdict line must say
+# ready to merge (a summary may quote the phrase before giving its real verdict).
 head_date=$(gh pr view "$PR" -R "$REPO" --json commits --jq '.commits[-1].committedDate')
 verdict=$(gh pr view "$PR" -R "$REPO" --json comments --jq '
   [.comments[] | select((.author.login | test("^claude"; "i")) and (.body | test("Verdict: (ready to merge|changes needed)")))]
   | sort_by(.updatedAt // .createdAt) | last
-  | if . == null then "none" else "\(.updatedAt // .createdAt) \(if (.body | test("Verdict: ready to merge")) then "ready" else "changes" end)" end')
+  | if . == null then "none" else "\(.updatedAt // .createdAt) \(if ([.body | scan("Verdict: (ready to merge|changes needed)")] | last | .[0]) == "ready to merge" then "ready" else "changes" end)" end')
 if [ "$verdict" = "none" ]; then
   post failure "No Claude review verdict yet."
   exit 0
