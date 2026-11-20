@@ -1,11 +1,18 @@
-# Checks every pull request and every push to main. The job is named `check` so the
-# "protect main" ruleset can require it (see docs/github.md).
+# Checks every ready pull request and every push to it. The job is named `check` so the "protect main"
+# ruleset can require it (see docs/github.md).
+#
+# Kept cheap on purpose (every job is billed as at least one minute):
+# - Draft PRs are skipped. CI starts when the PR is marked ready. A skipped job counts as passing for
+#   required checks, and a draft can't merge anyway.
+# - No run on main after a merge: the PR already passed the same checks. Deploy workflows build main.
+# - A newer push cancels the run in progress.
+# - Cache installs and test browsers, and don't reinstall system packages the runner image already has
+#   (see "Keeping CI cheap" in docs/github.md).
 name: CI
 
 on:
   pull_request:
-  push:
-    branches: [main]
+    types: [opened, synchronize, reopened, ready_for_review]
 
 permissions:
   contents: read
@@ -16,10 +23,12 @@ concurrency:
 
 jobs:
   check:
+    if: github.event.pull_request.draft == false
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      # Add your language setup here, for example actions/setup-node@v4 or actions/setup-python@v5.
+      # Add your language setup here with its cache turned on, for example
+      # actions/setup-node@v4 with `cache: pnpm`, or actions/setup-python@v5 with `cache: pip`.
       - name: Run the repo's checks
         run: ./scripts/check.sh

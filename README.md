@@ -27,7 +27,7 @@ flowchart LR
 4. **Build.** Labelling an issue `claude` syncs it to GitHub, and `claude.yml` builds it on a branch named after the Linear ID and opens a PR. Without an approved mockup link (or the `bug-fix` label) nothing is built.
 5. **Review.** `claude-review.yml` reviews every ready PR and push against the issue and its design. Codex reviews the same PR through its own GitHub app.
 6. **Fix.** `claude-fix.yml` answers the reviews: it fixes what it agrees with and replies with a reason where it doesn't. Security threads need a second Claude check before they close. One round per commit, at most three; then one fresh second attempt.
-7. **Gate and merge.** `merge-gate.yml` stays red while a design question is open, a review thread is unresolved, or the latest Claude review isn't "ready to merge". It is a required check, and GitHub auto-merge merges the PR once it and `check` pass.
+7. **Gate and merge.** The `Merge gate` status (posted by the review and fix jobs with `scripts/merge-gate.sh`) stays red while a design question is open, a review thread is unresolved, or the latest Claude review isn't "ready to merge". It is a required check, and GitHub auto-merge merges the PR once it and `check` pass.
 8. **Report.** A daily task updates spec status in Notion, and a weekly task writes a retro.
 
 ### What still comes back to you
@@ -47,7 +47,8 @@ A second attempt that also runs out of fix rounds comes back as the first kind: 
 | `.github/workflows/claude.yml` | Builds `claude`-labelled issues with an approved mockup into PRs and turns on auto-merge; answers `@claude` mentions |
 | `.github/workflows/claude-review.yml` | Claude review against the design on each ready PR and push, ending in a verdict |
 | `.github/workflows/claude-fix.yml` | Fix rounds after each review, the second security check, the second attempt and design questions |
-| `.github/workflows/merge-gate.yml` | The Merge gate check |
+| `.github/workflows/merge-gate.yml` | Updates the Merge gate when you remove `needs-human`, or on a manual re-run |
+| `scripts/merge-gate.sh` | The Merge gate's checks, posted as a commit status |
 | `.github/workflows/ci.yml` | Sample CI with a job named `check` |
 | `scripts/check.sh` | Your install, lint, typecheck and test commands (fill this in) |
 | `CLAUDE.md.template` | Rules Claude follows in the repo |
@@ -59,7 +60,7 @@ A second attempt that also runs out of fix rounds comes back as the first kind: 
 1. Notion: create the four databases and the home page ([docs/notion.md](docs/notion.md)).
 2. Linear: a team for the repo, labels `claude`, `needs-human` and `bug-fix`, GitHub Issues sync on ([docs/linear.md](docs/linear.md)).
 3. GitHub: install the Claude and Codex apps, add the `CLAUDE_CODE_OAUTH_TOKEN` secret ([docs/github.md](docs/github.md)).
-4. Copy the workflows and `scripts/check.sh` into your repo, fill in `check.sh`, and rename `CLAUDE.md.template` to `CLAUDE.md` and fill it in. Or paste [prompts/new-project.md](prompts/new-project.md) into a new Claude project and let Claude do this step.
+4. Copy the workflows, `scripts/check.sh` and `scripts/merge-gate.sh` into your repo, fill in `check.sh`, and rename `CLAUDE.md.template` to `CLAUDE.md` and fill it in. Or paste [prompts/new-project.md](prompts/new-project.md) into a new Claude project and let Claude do this step.
 5. After the first PR runs CI, add the `protect main` ruleset with `check` and `Merge gate` required, then turn on auto-merge ([docs/github.md](docs/github.md#protect-main)).
 6. Create the two scheduled tasks from [prompts/](prompts/).
 7. Decide on attribution ([docs/options.md](docs/options.md)).

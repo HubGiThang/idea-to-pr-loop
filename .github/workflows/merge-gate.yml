@@ -1,19 +1,20 @@
-# A required check that stays red while a PR must not merge. It passes only when:
-# - the PR has no needs-human label (a design question is waiting on the spec's Design review), and
-# - no review thread (from Claude, Codex or a person) is unresolved, and
-# - the latest Claude review summary, written after the latest commit, ends "Verdict: ready to merge".
-# Make it a required check (docs/github.md) so GitHub auto-merge waits for it.
-# Resolving a thread fires no event, and labels added with GITHUB_TOKEN trigger no workflows, so the
-# review and fix workflows re-run this check with workflow_dispatch on the PR branch.
+# The Merge gate is a commit status ("Merge gate") that the Claude review and Claude fix jobs post as their
+# last step (scripts/merge-gate.sh, read from the default branch). This small workflow covers what those
+# jobs don't:
+# - someone adds or removes `needs-human` by hand (labels the workflows add with their own token start no
+#   workflow, so those jobs post the gate themselves),
+# - an approval, which may carry inline comments (the fix job only handles other reviews),
+# - a manual re-run: gh workflow run merge-gate.yml -f pr=<number>, and
+# - PRs that skip the Claude review on purpose: set the repository variable NO_REVIEW_LABEL to their label
+#   (for example `form`), and those PRs get the gate on each push and each review instead.
+# Every other event is skipped at the job level, which GitHub does not bill.
 name: Merge gate
 
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
   pull_request_review:
-    types: [submitted, dismissed]
-  pull_request_review_comment:
-    types: [created, edited, deleted]
+    types: [submitted]
   workflow_dispatch:
     inputs:
       pr:
@@ -23,6 +24,7 @@ on:
 permissions:
   contents: read
   pull-requests: read
+  statuses: write
 
 concurrency:
   group: merge-gate-${{ github.event.pull_request.number || inputs.pr }}
@@ -30,56 +32,23 @@ concurrency:
 
 jobs:
   gate:
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      github.event.label.name == 'needs-human' ||
+      (github.event_name == 'pull_request_review' && github.event.review.state == 'approved') ||
+      (github.event.action != 'labeled' && github.event.action != 'unlabeled' && vars.NO_REVIEW_LABEL != '' &&
+       contains(github.event.pull_request.labels.*.name, vars.NO_REVIEW_LABEL))
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Check labels, review threads and the review verdict
+      - name: Update the merge gate
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           PR: ${{ github.event.pull_request.number || inputs.pr }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          NO_REVIEW_LABEL: ${{ vars.NO_REVIEW_LABEL }}
         run: |
-          owner="${REPO%/*}"; name="${REPO#*/}"
-          labels=$(gh pr view "$PR" -R "$REPO" --json labels --jq '[.labels[].name] | join(",")')
-          if echo ",$labels," | grep -q ",needs-human,"; then
-            echo "::error::This PR has a design question waiting (needs-human). It clears when the spec is approved again in its Design review."
-            exit 1
-          fi
-          # Count every unresolved thread, outdated or not: a fix push makes old threads outdated,
-          # including security threads still waiting for a second check.
-          unresolved=$(gh api graphql --paginate -F owner="$owner" -F name="$name" -F pr="$PR" -f query='
-            query($owner:String!,$name:String!,$pr:Int!,$endCursor:String){
-              repository(owner:$owner,name:$name){
-                pullRequest(number:$pr){
-                  reviewThreads(first:100, after:$endCursor){
-                    nodes{ isResolved }
-                    pageInfo{ hasNextPage endCursor }
-                  }
-                }
-              }
-            }' --jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved==false)] | length' \
-            | awk '{s+=$1} END {print s+0}')
-          if [ "$unresolved" -gt 0 ]; then
-            echo "::error::$unresolved review thread(s) are unresolved. The fix workflow answers and resolves them."
-            exit 1
-          fi
-          # The latest Claude review summary must be newer than the latest commit and say ready to merge.
-          head_date=$(gh pr view "$PR" -R "$REPO" --json commits --jq '.commits[-1].committedDate')
-          verdict=$(gh pr view "$PR" -R "$REPO" --json comments --jq '
-            [.comments[] | select((.author.login | test("^claude"; "i")) and (.body | test("Verdict: (ready to merge|changes needed)")))]
-            | sort_by(.updatedAt // .createdAt) | last
-            | if . == null then "none" else "\(.updatedAt // .createdAt) \(if (.body | test("Verdict: ready to merge")) then "ready" else "changes" end)" end')
-          if [ "$verdict" = "none" ]; then
-            echo "::error::No Claude review verdict yet."
-            exit 1
-          fi
-          verdict_date="${verdict% *}"; verdict_word="${verdict##* }"
-          if [[ "$verdict_date" < "$head_date" ]]; then
-            echo "::error::The latest Claude review is older than the latest commit ($verdict_date < $head_date). Waiting for a new review."
-            exit 1
-          fi
-          if [ "$verdict_word" != "ready" ]; then
-            echo "::error::The latest Claude review says changes are needed."
-            exit 1
-          fi
-          echo "Merge gate passed: no design question, no unresolved threads, and the latest review says ready to merge."
+          gh api "repos/$REPO/contents/scripts/merge-gate.sh?ref=$DEFAULT_BRANCH" \
+            -H "Accept: application/vnd.github.raw" > "$RUNNER_TEMP/merge-gate.sh"
+          bash "$RUNNER_TEMP/merge-gate.sh"

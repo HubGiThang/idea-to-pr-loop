@@ -1,6 +1,7 @@
 # Claude reviews every ready PR and every new push to it, against the issue's acceptance criteria and
 # the approved design. ChatGPT Codex reviews the same PRs through its own GitHub integration (turned on in
-# Codex settings), so each PR gets two independent reviews. Its verdict line feeds the Merge gate.
+# Codex settings), so each PR gets two independent reviews. Its verdict line feeds the Merge gate,
+# which this job posts as a commit status when it finishes.
 name: Claude review
 
 on:
@@ -12,7 +13,7 @@ permissions:
   pull-requests: write
   issues: read
   id-token: write
-  actions: write
+  statuses: write
 
 concurrency:
   group: claude-review-${{ github.event.pull_request.number }}
@@ -51,14 +52,17 @@ jobs:
             "Verdict: ready to merge" or "Verdict: changes needed". The Merge gate reads that last line.
           claude_args: --max-turns 30 --allowedTools "mcp__github_inline_comment__create_inline_comment,Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh issue view:*)"
 
-      # The verdict comment fires no event the Merge gate listens to, so re-run it on the PR branch.
-      - name: Re-run the merge gate
+      # Post the "Merge gate" status. The script is read from the default branch, so a PR can't change its own gate.
+      - name: Update the merge gate
         if: always()
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           PR: ${{ github.event.pull_request.number }}
-          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          NO_REVIEW_LABEL: ${{ vars.NO_REVIEW_LABEL }}
         run: |
-          gh workflow run merge-gate.yml -R "$REPO" --ref "$HEAD_REF" -f pr="$PR" \
-            || echo "::warning::Could not re-run the merge gate (it must exist on main first)."
+          gh api "repos/$REPO/contents/scripts/merge-gate.sh?ref=$DEFAULT_BRANCH" \
+            -H "Accept: application/vnd.github.raw" > "$RUNNER_TEMP/merge-gate.sh" \
+            || { echo "::warning::scripts/merge-gate.sh is not on the default branch yet."; exit 0; }
+          bash "$RUNNER_TEMP/merge-gate.sh"
