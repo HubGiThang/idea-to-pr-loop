@@ -48,6 +48,16 @@ jobs:
       PR: ${{ github.event.pull_request.number }}
       OUT: ${{ github.workspace }}/.fix-out
     steps:
+      # A new review may add unresolved threads, so close the gate until this job has handled them.
+      # The last step posts the real result.
+      - name: Close the merge gate while this review is handled
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sha=$(gh pr view "$PR" -R "$REPO" --json headRefOid --jq .headRefOid)
+          gh api "repos/$REPO/statuses/$sha" -f state=pending -f context="Merge gate" \
+            -f description="A new review is being handled." > /dev/null
+
       - name: Count fix rounds
         id: round
         env:
