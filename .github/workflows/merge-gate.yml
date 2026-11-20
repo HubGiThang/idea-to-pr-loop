@@ -1,16 +1,19 @@
 # The Merge gate is a commit status ("Merge gate") that the Claude review and Claude fix jobs post as their
-# last step (scripts/merge-gate.sh, read from the default branch). This small workflow covers the two cases
-# those jobs don't:
-# - the owner removes `needs-human` (after approving the spec again),
+# last step (scripts/merge-gate.sh, read from the default branch). This small workflow covers what those
+# jobs don't:
+# - someone adds or removes `needs-human` by hand (labels the workflows add with their own token start no
+#   workflow, so those jobs post the gate themselves),
 # - a manual re-run: gh workflow run merge-gate.yml -f pr=<number>, and
 # - PRs that skip the Claude review on purpose: set the repository variable NO_REVIEW_LABEL to their label
-#   (for example `form`), and those PRs get the gate on each push instead.
+#   (for example `form`), and those PRs get the gate on each push and each review instead.
 # Every other event is skipped at the job level, which GitHub does not bill.
 name: Merge gate
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened, ready_for_review, unlabeled]
+    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
+  pull_request_review:
+    types: [submitted]
   workflow_dispatch:
     inputs:
       pr:
@@ -30,8 +33,8 @@ jobs:
   gate:
     if: |
       github.event_name == 'workflow_dispatch' ||
-      (github.event.action == 'unlabeled' && github.event.label.name == 'needs-human') ||
-      (github.event.action != 'unlabeled' && vars.NO_REVIEW_LABEL != '' &&
+      github.event.label.name == 'needs-human' ||
+      (github.event.action != 'labeled' && github.event.action != 'unlabeled' && vars.NO_REVIEW_LABEL != '' &&
        contains(github.event.pull_request.labels.*.name, vars.NO_REVIEW_LABEL))
     runs-on: ubuntu-latest
     timeout-minutes: 5
