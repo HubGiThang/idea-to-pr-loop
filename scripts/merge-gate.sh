@@ -9,6 +9,8 @@
 # The workflows read this script from the default branch, so a PR cannot change its own gate.
 #
 # Needs: GH_TOKEN (with statuses: write), REPO (owner/name), PR (number).
+# Optional: NO_REVIEW_LABEL, a label for PRs that skip the Claude review on purpose (for example owner
+# requests built by a form). Those PRs skip only the verdict check; needs-human and threads still apply.
 set -euo pipefail
 
 owner="${REPO%/*}"; name="${REPO#*/}"
@@ -41,6 +43,11 @@ unresolved=$(gh api graphql --paginate -F owner="$owner" -F name="$name" -F pr="
   | awk '{s+=$1} END {print s+0}')
 if [ "$unresolved" -gt 0 ]; then
   post failure "$unresolved review thread(s) unresolved. The fix workflow answers and resolves them."
+  exit 0
+fi
+
+if [ -n "${NO_REVIEW_LABEL:-}" ] && echo ",$labels," | grep -q ",$NO_REVIEW_LABEL,"; then
+  post success "No design question and no unresolved threads (no Claude review on $NO_REVIEW_LABEL PRs)."
   exit 0
 fi
 
