@@ -1,12 +1,18 @@
 # Claude reviews every ready PR and every new push to it, against the issue's acceptance criteria and
 # the approved design. ChatGPT Codex reviews the same PRs through its own GitHub integration (turned on in
 # Codex settings), so each PR gets two independent reviews. Its verdict line feeds the Merge gate,
-# which this job posts as a commit status when it finishes.
+# which this job posts as a commit status when it finishes. The fix workflow also starts it by hand
+# (workflow_dispatch) after it settles every thread without a new commit.
 name: Claude review
 
 on:
   pull_request:
     types: [opened, synchronize, ready_for_review, reopened]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: PR number to review
+        required: true
 
 permissions:
   contents: read
@@ -16,35 +22,50 @@ permissions:
   statuses: write
 
 concurrency:
-  group: claude-review-${{ github.event.pull_request.number }}
+  group: claude-review-${{ github.event.pull_request.number || inputs.pr }}
   cancel-in-progress: true
 
 jobs:
   review:
-    if: github.event.pull_request.draft == false && github.event.pull_request.state == 'open'
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.pull_request.draft == false && github.event.pull_request.state == 'open')
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    env:
+      PR: ${{ github.event.pull_request.number || inputs.pr }}
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
-
       - name: Note the commit under review
         id: start
-        run: echo "at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          echo "at=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+          read -r state draft sha < <(gh pr view "$PR" -R "$REPO" --json state,isDraft,headRefOid --jq '"\(.state) \(.isDraft) \(.headRefOid)"')
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          if [ "$state" = OPEN ] && [ "$draft" = false ]; then echo "ok=true" >> "$GITHUB_OUTPUT"; else echo "ok=false" >> "$GITHUB_OUTPUT"; fi
+
+      - uses: actions/checkout@v4
+        if: steps.start.outputs.ok == 'true'
+        with:
+          ref: ${{ steps.start.outputs.sha }}
+          fetch-depth: 1
 
       - uses: anthropics/claude-code-action@v1
         id: claude
+        if: steps.start.outputs.ok == 'true'
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           # PRs are opened by claude[bot], so the action must accept bot actors.
           allowed_bots: '*'
           # Optional: uncomment to keep Claude attribution out of commits and PRs (see docs/options.md).
           # settings: '{"includeCoAuthoredBy": false, "attribution": {"commit": "", "pr": ""}}'
-          track_progress: true
+          # Progress tracking needs a pull_request event; a hand-started review posts its summary with gh pr comment.
+          track_progress: ${{ github.event_name == 'pull_request' }}
           prompt: |
             REPO: ${{ github.repository }}
-            PR NUMBER: ${{ github.event.pull_request.number }}
+            PR NUMBER: ${{ env.PR }}
 
             Review this pull request against the linked issue: its acceptance criteria and its Design section,
             which describes the approved mockup screen this PR builds (the PR body links both). The design was
@@ -64,8 +85,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
-          PR: ${{ github.event.pull_request.number }}
-          SHA: ${{ github.event.pull_request.head.sha }}
+          SHA: ${{ steps.start.outputs.sha }}
           SINCE: ${{ steps.start.outputs.at }}
         run: |
           word=$(gh api --paginate "repos/$REPO/issues/$PR/comments" | jq -rs --arg since "$SINCE" '
@@ -86,7 +106,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
-          PR: ${{ github.event.pull_request.number }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           NO_REVIEW_LABEL: ${{ vars.NO_REVIEW_LABEL }}
         run: |

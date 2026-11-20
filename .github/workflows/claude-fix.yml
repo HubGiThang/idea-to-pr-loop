@@ -70,13 +70,23 @@ jobs:
           if echo ",$labels," | grep -q ",needs-human,"; then
             echo "run=false" >> "$GITHUB_OUTPUT"; exit 0
           fi
-          # A round already ran on this commit: let that round's fixes land before starting another.
-          # Only a round that finished counts: a failed run leaves its status pending, so the commit can be retried.
+          # Several reviews on one commit share a round: when a round already finished on this commit and left
+          # no thread open, skip. A later review that opened new threads on the same commit starts the next
+          # round. Only a finished round counts: a failed run leaves its status pending, so it can be retried.
           done_here=$(gh api "repos/$REPO/commits/$sha/statuses" --paginate \
             | jq -s '[add[] | select(.context=="claude-fix-round")] | sort_by(.created_at) | last | .state == "success"')
           if [ "$done_here" = true ]; then
-            echo "A fix round already ran on $sha; skipping."
-            echo "run=false" >> "$GITHUB_OUTPUT"; exit 0
+            owner="${REPO%/*}"; name="${REPO#*/}"
+            open=$(gh api graphql --paginate -F owner="$owner" -F name="$name" -F pr="$PR" -f query='
+              query($owner:String!,$name:String!,$pr:Int!,$endCursor:String){
+                repository(owner:$owner,name:$name){ pullRequest(number:$pr){
+                  reviewThreads(first:100, after:$endCursor){ nodes{ isResolved } pageInfo{ hasNextPage endCursor } } } }
+              }' --jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved==false)] | length' \
+              | awk '{s+=$1} END {print s+0}')
+            if [ "$open" -eq 0 ]; then
+              echo "A fix round already ran on $sha and no thread is open; skipping."
+              echo "run=false" >> "$GITHUB_OUTPUT"; exit 0
+            fi
           fi
           n=0
           for i in 1 2 3; do
@@ -268,6 +278,29 @@ jobs:
             echo "This goes back to the spec's Design review in Notion. Once the spec is approved again, a Claude session updates the build and removes needs-human."
           } > "$OUT/comment.md"
           gh pr comment "$PR" -R "$REPO" --body-file "$OUT/comment.md"
+
+      # Threads settled without a commit (false alarms answered) leave the old "changes needed" verdict on the
+      # same commit, and the review only runs on pushes. Ask for a fresh review of that commit. Each such review
+      # can only start another counted round, so this stays bounded by the three rounds.
+      - name: Ask for a fresh review when threads were settled without a commit
+        if: always() && steps.round.outputs.run == 'true' && steps.claude.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ steps.round.outputs.sha }}
+        run: |
+          [ "$(gh pr view "$PR" -R "$REPO" --json state,headRefOid --jq '.state + " " + .headRefOid')" = "OPEN $SHA" ] || exit 0
+          owner="${REPO%/*}"; name="${REPO#*/}"
+          open=$(gh api graphql --paginate -F owner="$owner" -F name="$name" -F pr="$PR" -f query='
+            query($owner:String!,$name:String!,$pr:Int!,$endCursor:String){
+              repository(owner:$owner,name:$name){ pullRequest(number:$pr){
+                reviewThreads(first:100, after:$endCursor){ nodes{ isResolved } pageInfo{ hasNextPage endCursor } } } }
+            }' --jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved==false)] | length' \
+            | awk '{s+=$1} END {print s+0}')
+          [ "$open" -eq 0 ] || exit 0
+          verdict=$(gh api "repos/$REPO/commits/$SHA/statuses" --paginate \
+            | jq -rs '[add[] | select(.context == "Claude verdict")] | sort_by(.created_at) | last | .state // "none"')
+          [ "$verdict" = failure ] || exit 0
+          gh workflow run claude-review.yml -R "$REPO" --ref "${{ github.event.repository.default_branch }}" -f pr="$PR"
 
       # Labels, replies and resolved threads change the gate, and so can a review that skipped its fix round
       # (for example a Codex review on a commit that already had one). Post the "Merge gate" status.
