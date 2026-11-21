@@ -13,7 +13,7 @@ Do the steps in this order, once the repo has the workflows on `main`. Turn on a
 | 3 | Labels `claude`, `needs-human`, `bug-fix` | `bash setup/add-labels.sh OWNER/REPO ...` |
 | 4 | Linear | Nothing per repo when one Linear team covers several repos: install the Linear GitHub app on all repositories, leave GitHub Issues sync off, and Claude opens each GitHub issue with a `Linear: ABC-12` line when it cuts a spec. One team per repo can use the sync instead ([docs/linear.md](../docs/linear.md)) |
 | 5 | Ruleset "protect main" | After the first PR has run CI and been reviewed: `bash setup/add-ruleset.sh OWNER/REPO ...` (requires `check` and `Merge gate`; pass `-c NAME` for each check if your CI jobs have other names) |
-| 6 | Auto-merge | `bash setup/turn-on-auto-merge.sh OWNER/REPO ...` (Allow auto-merge plus the variable `AUTO_MERGE=true`; skips repos without the ruleset) |
+| 6 | Auto-merge | `bash setup/turn-on-auto-merge.sh OWNER/REPO ...` (Allow auto-merge plus the variable `AUTO_MERGE=true`; skips a repo unless its ruleset is active and requires checks) |
 
 Optional: the secret `AUTO_MERGE_TOKEN`, if `main` deploys through a workflow ([docs/options.md](../docs/options.md#how-prs-merge)), and the variable `NO_REVIEW_LABEL` for PRs that skip the Claude review on purpose (see `merge-gate.yml`).
 

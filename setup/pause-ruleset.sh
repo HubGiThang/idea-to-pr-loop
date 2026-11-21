@@ -17,7 +17,7 @@ fi
 repo=$1
 if [ "$2" = off ]; then enforcement=disabled; else enforcement=active; fi
 
-id=$(gh api "repos/$repo/rulesets" --jq '.[] | select(.name == "protect main") | .id')
+id=$(gh api "repos/$repo/rulesets" --jq '[.[] | select(.name == "protect main")][0].id // empty')
 if [ -z "$id" ]; then
   echo "$repo: no protect main ruleset" >&2
   exit 1
