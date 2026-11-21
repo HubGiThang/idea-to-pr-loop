@@ -107,7 +107,7 @@ jobs:
             build what the issue's acceptance criteria and Design section describe. The issue links the mockup;
             if you cannot open the link, the Design section is the description to follow.
             1. Read the issue body and its comments. The Linear ID (for example ABC-12) is on the body's
-               "Linear: ABC-12" line, or in the linear-linkback comment when the issue is synced.
+               "Linear: ABC-12" line (use it first), or in the linear-linkback comment when the issue is synced.
             2. Create a branch named claude/<linear-id-lowercase>-<short-slug>${{ env.ATTEMPT == '2' && '-v2' || '' }}, make the change,
                and run ./scripts/check.sh (CLAUDE.md lists any other checks).
             3. Commit with a plain imperative message, and push the branch.

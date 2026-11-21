@@ -10,8 +10,9 @@
 Linear syncs each team's issues to one repo only. If several repos share a team, turn GitHub Issues sync off and let Claude open the GitHub issues instead:
 
 1. Install the Linear GitHub app on all repositories, so "Fixes ABC-12" in any repo's PR links and closes the Linear issue.
-2. When Claude cuts a spec, it creates each Linear issue, then opens a GitHub issue in the spec's repo with the same title and body, a first line `Linear: ABC-12`, and the labels (`claude`, or `bug-fix`). It attaches the GitHub issue's link to the Linear issue.
-3. The build reads the Linear ID from that line, and the PR's `Closes #N` closes the GitHub issue when it merges.
+2. Create the `claude` label in each GitHub repo too (the sync used to bring it over). `docs/github.md` covers the other labels.
+3. When Claude cuts a spec, it creates each Linear issue, then opens a GitHub issue in the spec's repo with the same title and body, a first line `Linear: ABC-12`, and the labels (`claude`, plus `bug-fix` for a bug fix). It attaches the GitHub issue's link to the Linear issue. Open the issue as you or through the Claude GitHub app, not with a workflow's `GITHUB_TOKEN`: events from that token don't start `claude.yml`.
+4. The build reads the Linear ID from that line, and the PR's `Closes #N` closes the GitHub issue when it merges.
 
 Edits made in Linear after that don't reach GitHub. Change the GitHub issue too, or ask Claude to.
 
