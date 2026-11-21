@@ -2,10 +2,13 @@
 
 Paste into a Claude project that has the repo added and the Notion connector on, when an idea is ready to become a spec. It drafts the spec and the mockup you review together.
 
+Start only after you have set the idea's Status to **Spec it** yourself. That is your go-ahead for this stage. Claude creates new ideas in Inbox and stops there; it never changes an idea's Status, and "follow the process" is not approval for the next stage.
+
 ```
 Turn this idea into a spec and a clickable mockup for my design review:
 <IDEA LINK OR TEXT>. Specs database: <SPECS DATABASE LINK>.
 
+0. Check the idea's Status. If it is not Spec it, stop and tell me; don't draft anything.
 1. Read the idea, the repo, and any related specs. If this is a change to an existing
    feature, start from how it works today.
 2. Make a clickable mockup as a private artifact (an HTML page I can open on my phone):

@@ -6,7 +6,7 @@ One teamspace (for example "Product") with four databases and one home page. You
 
 | Database | Properties | Page template |
 |---|---|---|
-| Ideas | Status (Inbox, Spec it, Parked, Rejected), Repo, Size (S, M, L), Source | Problem, who it is for, why now, rough size |
+| Ideas | Status (Inbox, Spec it, Specced, Parked, Rejected), Repo, Size (S, M, L), Source | Problem, who it is for, why now, rough size |
 | Specs | Status (Drafting, Design review, Design approved, Building, Shipped, Dropped), Mockup (URL), Design approved (date), Repo, Linear project (URL), PRs (text), Blockers (text), Autonomy (Auto-merge, Human merge; default Auto-merge) | Mockup (link and what to look at), goal, non-goals, user stories, acceptance criteria (pointing at mockup screens), hard-to-undo steps (or "none"), architecture, slice plan, risks, open questions |
 | Decisions | Spec (relation), Date, Status | Context, options, decision, consequences |
 | Retros | Week (title), Week of (date range), PRs merged (number), Design questions (number), Specs shipped (relation to Specs) | Written by the weekly retro task |
@@ -17,6 +17,10 @@ Make one page you open every morning, with:
 
 1. A heading **Overnight status** with a single callout under it. The morning sync task rewrites only this callout.
 2. A heading **Today** with linked views: **Waiting for your design review** (Status = Design review) first, then Ideas in Inbox and Specs in Building.
+
+## Idea gate
+
+Inbox → Spec it → Specced (or Parked, Rejected). Only you set **Spec it**: it is the go-ahead for Claude to draft a spec and mockup. Claude creates ideas in Inbox and stops; it never changes an idea's Status. Put this rule in the Ideas database description too, so every Claude session that opens it sees it.
 
 ## Spec lifecycle
 
