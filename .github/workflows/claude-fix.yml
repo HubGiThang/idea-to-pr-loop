@@ -97,6 +97,15 @@ jobs:
           for i in 1 2 3; do
             if echo ",$labels," | grep -q ",fix-round-$i,"; then n=$i; fi
           done
+          # A run that failed part-way (checkout, sign-in, the Claude step) leaves this commit's round status
+          # pending. Retry that same round instead of spending the next one.
+          last_state=$(gh api "repos/$REPO/commits/$sha/statuses" --paginate \
+            | jq -rs '[add[] | select(.context=="claude-fix-round")] | sort_by(.created_at) | last | .state // "none"')
+          if [ "$last_state" = pending ] && [ "$n" -ge 1 ]; then
+            echo "Fix round $n did not finish on $sha; retrying it."
+            echo "round=$n" >> "$GITHUB_OUTPUT"
+            echo "run=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
           if [ "$n" -ge 3 ]; then
             # All three rounds have run. A review after the last round may still leave threads open, so the
             # hand-off step checks again and restarts or raises the scope question if any are.
@@ -288,14 +297,19 @@ jobs:
           } > "$OUT/comment.md"
           gh pr comment "$PR" -R "$REPO" --body-file "$OUT/comment.md"
 
-      # Threads settled without a commit (false alarms answered) leave the old "changes needed" verdict on the
-      # same commit, and the review only runs on pushes. Ask for a fresh review of that commit. Each such review
-      # can only start another counted round, so this stays bounded by the three rounds.
-      - name: Ask for a fresh review when threads were settled without a commit
+      # A round that made no commit gets no new review on its own: the review only runs on pushes. So when this
+      # round left the commit unchanged, ask for a fresh review of it if
+      # - threads are still open (for example a false alarm the second security check did not confirm), and
+      #   rounds are left (after round 3 the step above restarts or raises the scope question), or
+      # - every thread is settled but the verdict on this commit still says changes are needed.
+      # If the review of this commit is still running, wait for its verdict first (up to 10 minutes).
+      # Each fresh review can only start another counted round, so this stays bounded by the three rounds.
+      - name: Ask for a fresh review when the round made no commit
         if: always() && steps.round.outputs.run == 'true' && steps.claude.outcome == 'success'
         env:
           GH_TOKEN: ${{ github.token }}
           SHA: ${{ steps.round.outputs.sha }}
+          ROUND: ${{ steps.round.outputs.round }}
         run: |
           [ "$(gh pr view "$PR" -R "$REPO" --json state,headRefOid --jq '.state + " " + .headRefOid')" = "OPEN $SHA" ] || exit 0
           owner="${REPO%/*}"; name="${REPO#*/}"
@@ -305,11 +319,20 @@ jobs:
                 reviewThreads(first:100, after:$endCursor){ nodes{ isResolved } pageInfo{ hasNextPage endCursor } } } }
             }' --jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved==false)] | length' \
             | awk '{s+=$1} END {print s+0}')
-          [ "$open" -eq 0 ] || exit 0
-          verdict=$(gh api "repos/$REPO/commits/$SHA/statuses" --paginate \
-            | jq -rs '[add[] | select(.context == "Claude verdict")] | sort_by(.created_at) | last | .state // "none"')
-          [ "$verdict" = failure ] || exit 0
-          gh workflow run claude-review.yml -R "$REPO" --ref "${{ github.event.repository.default_branch }}" -f pr="$PR"
+          review() { gh workflow run claude-review.yml -R "$REPO" --ref "${{ github.event.repository.default_branch }}" -f pr="$PR"; }
+          if [ "$open" -gt 0 ]; then
+            [ "$ROUND" -lt 3 ] && { echo "$open thread(s) still open with no new commit; asking for a fresh review."; review; }
+            exit 0
+          fi
+          verdict=none
+          for _ in $(seq 20); do
+            verdict=$(gh api "repos/$REPO/commits/$SHA/statuses" --paginate \
+              | jq -rs '[add[] | select(.context == "Claude verdict")] | sort_by(.created_at) | last | .state // "none"')
+            [ "$verdict" = none ] || break
+            sleep 30
+          done
+          [ "$verdict" = failure ] && review
+          exit 0
 
       # Labels, replies and resolved threads change the gate, and so can a review that skipped its fix round
       # (for example a Codex review on a commit that already had one). Post the "Merge gate" status.
@@ -322,6 +345,7 @@ jobs:
           PR: ${{ github.event.pull_request.number }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           NO_REVIEW_LABEL: ${{ vars.NO_REVIEW_LABEL }}
+          CODEX_REVIEW: ${{ vars.CODEX_REVIEW }}
         run: |
           gh api "repos/$REPO/contents/scripts/merge-gate.sh?ref=$DEFAULT_BRANCH" \
             -H "Accept: application/vnd.github.raw" > "$RUNNER_TEMP/merge-gate.sh" \
