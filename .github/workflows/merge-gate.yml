@@ -31,10 +31,6 @@ permissions:
   pull-requests: read
   statuses: write
 
-concurrency:
-  group: merge-gate-${{ github.event.pull_request.number || github.event.issue.number || inputs.pr }}
-  cancel-in-progress: true
-
 jobs:
   gate:
     if: |
@@ -47,6 +43,11 @@ jobs:
       (github.event_name == 'pull_request_review' && github.event.review.state == 'approved') ||
       (github.event.action != 'labeled' && github.event.action != 'unlabeled' && vars.NO_REVIEW_LABEL != '' &&
        contains(github.event.pull_request.labels.*.name, vars.NO_REVIEW_LABEL))
+    # Concurrency sits on the job, not the workflow: a skipped run (any other comment, for example) must not
+    # cancel a gate update in progress. A newer gate update may cancel an older one; it reads live state.
+    concurrency:
+      group: merge-gate-${{ github.event.pull_request.number || github.event.issue.number || inputs.pr }}
+      cancel-in-progress: true
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
