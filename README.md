@@ -54,14 +54,21 @@ A second attempt that also runs out of fix rounds comes back as the first kind: 
 | `CLAUDE.md.template` | Rules Claude follows in the repo |
 | `docs/` | Setup for Notion, Linear, GitHub, and the options |
 | `prompts/` | Spec-and-mockup prompt, new-project prompt, morning sync, weekly retro |
+| `setup/` | Scripts for the repo settings (token secret, labels, ruleset, auto-merge) and the settings checklist. Run them from this template; don't copy them into your repo |
 
 ## Setup checklist
 
 1. Notion: create the four databases and the home page ([docs/notion.md](docs/notion.md)).
 2. Linear: a team for the repo, labels `claude`, `needs-human` and `bug-fix`, GitHub Issues sync on, or one team for several repos ([docs/linear.md](docs/linear.md)).
-3. GitHub: install the Claude and Codex apps, add the `CLAUDE_CODE_OAUTH_TOKEN` secret ([docs/github.md](docs/github.md)).
-4. Copy the workflows, `scripts/check.sh` and `scripts/merge-gate.sh` into your repo, fill in `check.sh`, and rename `CLAUDE.md.template` to `CLAUDE.md` and fill it in. Or paste [prompts/new-project.md](prompts/new-project.md) into a new Claude project and let Claude do this step.
-5. After the first PR runs CI, add the `protect main` ruleset with `check` and `Merge gate` required, then turn on auto-merge ([docs/github.md](docs/github.md#protect-main)).
+3. Copy the workflows, `scripts/check.sh` and `scripts/merge-gate.sh` into your repo, fill in `check.sh`, and rename `CLAUDE.md.template` to `CLAUDE.md` and fill it in. Or paste [prompts/new-project.md](prompts/new-project.md) into a new Claude project and let Claude do this step.
+4. Repo settings, in this order, with the scripts in [setup/](setup/README.md):
+   1. Token secret: `claude setup-token`, then `bash setup/set-token.sh OWNER/REPO`.
+   2. Apps: install the Claude and ChatGPT Codex apps and turn on Codex's automatic review (by hand).
+   3. Labels: `bash setup/add-labels.sh OWNER/REPO`.
+   4. Linear: Claude opens the GitHub issues when one team covers several repos, so no issue sync (step 2 above).
+   5. Ruleset, after the first PR runs CI: `bash setup/add-ruleset.sh OWNER/REPO`.
+   6. Auto-merge, last: `bash setup/turn-on-auto-merge.sh OWNER/REPO`.
+5. PRs that change workflow files (including template updates) never get a Claude verdict, so merge them by hand: ruleset off, merge, ruleset on ([setup/README.md](setup/README.md#prs-that-change-workflow-files)).
 6. Create the two scheduled tasks from [prompts/](prompts/).
 7. Decide on attribution ([docs/options.md](docs/options.md)).
 

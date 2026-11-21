@@ -19,8 +19,9 @@ changes something outside the repo, and wait for my go-ahead.
      stack the spec chooses, and any language setup ci.yml needs.
    - CLAUDE.md from CLAUDE.md.template, with our Linear team key and commands filled in.
    Open it as a draft PR and tell me when it is up.
-3. After I merge the setup PR, add the protect main ruleset and auto-merge as
-   docs/github.md describes (tell me first if you can't change repo settings).
+3. After I merge the setup PR, add the labels, the protect main ruleset and
+   auto-merge with the scripts in setup/README.md (tell me first if you can't
+   change repo settings).
 4. Cut the approved spec into small Linear issues in team <TEAM KEY>, one slice each,
    in a new Linear project named after the product, as docs/linear.md describes (each
    with the Mockup line, a Design section and acceptance criteria). Write the Linear
