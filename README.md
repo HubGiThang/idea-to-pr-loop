@@ -69,7 +69,7 @@ Only questions that need your judgment, and they come back to the spec's Design 
 | `scripts/merge-gate.sh` | The Merge gate's checks, posted as a commit status |
 | `.github/workflows/ci.yml` | Sample CI with a job named `check` |
 | `scripts/check.sh` | Your install, lint, typecheck and test commands (fill this in) |
-| `.github/workflows/site-dispatch.yml` | On every push to main, tells the site repo the template changed (needs `SITE_DISPATCH_TOKEN` and `SITE_REPO`; skips without them). See [docs/site-markers.md](docs/site-markers.md) |
+| `.github/workflows/site-dispatch.yml` (now `setup/site-dispatch.yml`, move by hand) | On every push to main, tells the site repo the template changed (needs `SITE_DISPATCH_TOKEN` and `SITE_REPO`; skips without them). See [docs/site-markers.md](docs/site-markers.md) |
 | `CLAUDE.md.template` | Rules Claude follows in the repo |
 | `docs/` | Setup for Notion, Linear, GitHub, and the options |
 | `prompts/` | Spec-and-mockup prompt, new-project prompt, morning sync, weekly retro |

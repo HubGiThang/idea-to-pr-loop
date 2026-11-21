@@ -18,4 +18,4 @@ A `Link:` that starts with `http` is a web address; any other value is a path in
 
 ## Telling the site about changes
 
-`.github/workflows/site-dispatch.yml` runs on every push to main and sends a `repository_dispatch` event of type `template-updated`, with the commit SHA in `client_payload.sha`, to the site repo. It needs the secret `SITE_DISPATCH_TOKEN` (a token that can create dispatch events on the site repo) and the repo variable `SITE_REPO` (`OWNER/REPO`). If either is missing it skips with a notice, so copies of the template are not affected.
+`.github/workflows/site-dispatch.yml` (kept at `setup/site-dispatch.yml` until a person moves it, because the Claude app can't push workflow files) runs on every push to main and sends a `repository_dispatch` event of type `template-updated`, with the commit SHA in `client_payload.sha`, to the site repo. It needs the secret `SITE_DISPATCH_TOKEN` (a token that can create dispatch events on the site repo) and the repo variable `SITE_REPO` (`OWNER/REPO`). If either is missing it skips with a notice, so copies of the template are not affected.
