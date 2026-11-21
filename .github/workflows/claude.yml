@@ -1,5 +1,5 @@
 # Claude builds Linear issues and answers @claude mentions.
-# - An issue labelled `claude` (synced from Linear) is built end to end: branch, code, tests, PR. It must
+# - An issue labelled `claude` (synced from Linear, or opened by Claude for a Linear issue) is built end to end: branch, code, tests, PR. It must
 #   link its approved mockup (a "Mockup: <url>" line) unless it is labelled `bug-fix` (restores behavior
 #   that was already approved). Without one, nothing is built.
 # - A build that hits a design question writes it down instead of guessing; the issue gets `needs-human`
@@ -45,7 +45,7 @@ concurrency:
 
 jobs:
   build:
-    # A Linear issue synced to GitHub with the `claude` label, or a second attempt started by the fix workflow.
+    # A Linear issue on GitHub (synced, or opened by Claude) with the `claude` label, or a second attempt started by the fix workflow.
     if: |
       (github.event_name == 'issues' && github.event.label.name == 'claude') ||
       github.event_name == 'workflow_dispatch'
@@ -106,12 +106,14 @@ jobs:
             Build this issue end to end, following CLAUDE.md. The design was approved before this issue was cut:
             build what the issue's acceptance criteria and Design section describe. The issue links the mockup;
             if you cannot open the link, the Design section is the description to follow.
-            1. Read the issue body and its comments. The Linear ID (for example ABC-12) is in the linear-linkback comment.
+            1. Read the issue body and its comments. The Linear ID (for example ABC-12) is on the body's
+               "Linear: ABC-12" line (use it first), or in the linear-linkback comment when the issue is synced.
             2. Create a branch named claude/<linear-id-lowercase>-<short-slug>${{ env.ATTEMPT == '2' && '-v2' || '' }}, make the change,
                and run ./scripts/check.sh (CLAUDE.md lists any other checks).
             3. Commit with a plain imperative message, and push the branch.
-            4. Open a draft PR with `gh pr create --draft --base main`. The body starts with three lines:
-               "Fixes <Linear ID>", "GitHub issue: #${{ env.ISSUE }}", and the issue's "Mockup: <link>" line (if it has one).
+            4. Open a draft PR with `gh pr create --draft --base main`. The body starts with four lines:
+               "Fixes <Linear ID>", "GitHub issue: #${{ env.ISSUE }}", "Closes #${{ env.ISSUE }}", and the issue's
+               "Mockup: <link>" line (if it has one).
                Then say in plain words what changed and how it was checked.
             5. If the checks pass, mark it ready with `gh pr ready`. Write the PR number alone to ${{ env.OUT }}/pr.txt.
             ${{ env.ATTEMPT == '2' && format('This is a second attempt. The first PR #{0} was closed after three fix rounds left review threads open. Read it and its review threads with `gh pr view {0} --comments` and take a different approach that avoids those problems.', env.PREVIOUS_PR) || '' }}

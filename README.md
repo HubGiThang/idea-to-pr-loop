@@ -24,7 +24,7 @@ flowchart LR
 1. **Spec and mockup.** Ideas become specs in Notion. Claude writes each spec and makes a clickable mockup ([prompts/spec-and-mockup.md](prompts/spec-and-mockup.md)). Features with no screen get a preview of the behavior. Bug fixes that only restore approved behavior skip this.
 2. **Design review.** You open the mockup, ask for changes, and approve. This is the only review you do.
 3. **Cut into Linear issues.** One small slice per issue, each with acceptance criteria, the mockup link and a Design section describing what it builds.
-4. **Build.** Labelling an issue `claude` syncs it to GitHub, and `claude.yml` builds it on a branch named after the Linear ID and opens a PR. Without an approved mockup link (or the `bug-fix` label) nothing is built.
+4. **Build.** The `claude`-labelled issue reaches GitHub (by Linear's sync, or Claude opens it when several repos share a Linear team), and `claude.yml` builds it on a branch named after the Linear ID and opens a PR. Without an approved mockup link (or the `bug-fix` label) nothing is built.
 5. **Review.** `claude-review.yml` reviews every ready PR and push against the issue and its design. Codex reviews the same PR through its own GitHub app.
 6. **Fix.** `claude-fix.yml` answers the reviews: it fixes what it agrees with and replies with a reason where it doesn't. Security threads need a second Claude check before they close. One round per commit, at most three; then one fresh second attempt.
 7. **Gate and merge.** The `Merge gate` status (posted by the review and fix jobs with `scripts/merge-gate.sh`) stays red while a design question is open, a review thread is unresolved, the latest Claude review isn't "ready to merge", or the Codex review hasn't finished (set the repository variable `CODEX_REVIEW=off` if the repo has no Codex app). It is a required check, and GitHub auto-merge merges the PR once it and `check` pass.
@@ -58,7 +58,7 @@ A second attempt that also runs out of fix rounds comes back as the first kind: 
 ## Setup checklist
 
 1. Notion: create the four databases and the home page ([docs/notion.md](docs/notion.md)).
-2. Linear: a team for the repo, labels `claude`, `needs-human` and `bug-fix`, GitHub Issues sync on ([docs/linear.md](docs/linear.md)).
+2. Linear: a team for the repo, labels `claude`, `needs-human` and `bug-fix`, GitHub Issues sync on, or one team for several repos ([docs/linear.md](docs/linear.md)).
 3. GitHub: install the Claude and Codex apps, add the `CLAUDE_CODE_OAUTH_TOKEN` secret ([docs/github.md](docs/github.md)).
 4. Copy the workflows, `scripts/check.sh` and `scripts/merge-gate.sh` into your repo, fill in `check.sh`, and rename `CLAUDE.md.template` to `CLAUDE.md` and fill it in. Or paste [prompts/new-project.md](prompts/new-project.md) into a new Claude project and let Claude do this step.
 5. After the first PR runs CI, add the `protect main` ruleset with `check` and `Merge gate` required, then turn on auto-merge ([docs/github.md](docs/github.md#protect-main)).

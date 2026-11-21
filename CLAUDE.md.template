@@ -6,7 +6,7 @@
 
 - The owner reviews early, not at PRs. Every feature, big or small, starts as a spec in Notion (Specs database) with a clickable mockup. Features with no screen get a preview of the behavior instead (example inputs and outputs, before and after, or a flow). The owner approves the spec and mockup together (Status: Design approved). That is their only review.
 - Approved specs are cut into Linear issues in team <TEAM KEY>, one slice each. Each issue has acceptance criteria, a `Mockup: <link>` line, and a Design section describing the screen or behavior it builds. A bug fix that only restores behavior that was already approved has the `bug-fix` label instead of a mockup.
-- Each Linear issue syncs to a GitHub issue. The label `claude` means Claude should build it. Without a mockup line or `bug-fix`, it is not built.
+- Each Linear issue reaches GitHub as an issue in this repo: synced by Linear's GitHub Issues sync, or opened by Claude when it cuts the issues (with a `Linear: ABC-12` line on top). The label `claude` means Claude should build it. Without a mockup line or `bug-fix`, it is not built.
 - Build what the issue's acceptance criteria and Design section describe. Decide small open points yourself and note them in the PR body.
 
 ## When to stop and ask
@@ -30,7 +30,7 @@ Everything else (review disagreements, failing checks, tooling problems) Claude 
 
 - Branch name: `claude/<linear-id-lowercase>-<short-slug>`, e.g. `claude/abc-12-search-page`. The Linear ID in the name lets Linear link the branch.
 - One issue, one PR. Keep PRs small. Open as a draft, mark ready when checks pass.
-- The PR body starts with `Fixes ABC-12` (the Linear ID), `GitHub issue: #N` and the issue's `Mockup: <link>` line, so Linear links and closes the issue and reviewers can find the design.
+- The PR body starts with `Fixes ABC-12` (the Linear ID), `GitHub issue: #N`, `Closes #N` and the issue's `Mockup: <link>` line, so Linear links and closes the issue and reviewers can find the design.
 - Never push to `main`. PRs merge through GitHub auto-merge once the required checks pass: `check` and `Merge gate` (no `needs-human`, no unresolved review thread, the latest Claude review says "Verdict: ready to merge", and the Codex review has finished). Never merge around them.
 - Never resolve a security thread unless a second, separate Claude check agrees it is fixed or a false alarm.
 
