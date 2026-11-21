@@ -31,8 +31,10 @@ shift $((OPTIND - 1))
 checks_json=$(printf '%s\n' "${checks[@]}" | jq -R '{context: ., integration_id: 15368}' | jq -s .)
 
 for repo in "$@"; do
-  if gh api "repos/$repo/rulesets" --jq '.[].name' | grep -qx 'protect main'; then
-    echo "$repo: already has protect main, skipped"
+  existing=$(gh api "repos/$repo/rulesets" --jq '.[] | select(.name == "protect main") | .enforcement')
+  if [ -n "$existing" ]; then
+    echo "$repo: already has protect main ($existing), skipped"
+    [ "$existing" = active ] || echo "$repo: it is not active, run: bash setup/pause-ruleset.sh $repo on"
     continue
   fi
   jq -n --argjson checks "$checks_json" '{
