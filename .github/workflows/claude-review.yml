@@ -108,6 +108,7 @@ jobs:
           REPO: ${{ github.repository }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           NO_REVIEW_LABEL: ${{ vars.NO_REVIEW_LABEL }}
+          CODEX_REVIEW: ${{ vars.CODEX_REVIEW }}
         run: |
           gh api "repos/$REPO/contents/scripts/merge-gate.sh?ref=$DEFAULT_BRANCH" \
             -H "Accept: application/vnd.github.raw" > "$RUNNER_TEMP/merge-gate.sh" \

@@ -6,7 +6,10 @@
 # - an approval, which may carry inline comments (the fix job only handles other reviews),
 # - a manual re-run: gh workflow run merge-gate.yml -f pr=<number>, and
 # - PRs that skip the Claude review on purpose: set the repository variable NO_REVIEW_LABEL to their label
-#   (for example `form`), and those PRs get the gate on each push and each review instead.
+#   (for example `form`), and those PRs get the gate on each push and each review instead, and again when
+#   that label is added or removed,
+# - a Codex review that finishes with no findings (Codex then only updates its summary comment, which starts
+#   no other workflow; the gate waits for Codex, see scripts/merge-gate.sh).
 # Every other event is skipped at the job level, which GitHub does not bill.
 name: Merge gate
 
@@ -15,6 +18,8 @@ on:
     types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
   pull_request_review:
     types: [submitted]
+  issue_comment:
+    types: [created, edited]
   workflow_dispatch:
     inputs:
       pr:
@@ -27,7 +32,7 @@ permissions:
   statuses: write
 
 concurrency:
-  group: merge-gate-${{ github.event.pull_request.number || inputs.pr }}
+  group: merge-gate-${{ github.event.pull_request.number || github.event.issue.number || inputs.pr }}
   cancel-in-progress: true
 
 jobs:
@@ -35,6 +40,10 @@ jobs:
     if: |
       github.event_name == 'workflow_dispatch' ||
       github.event.label.name == 'needs-human' ||
+      (vars.NO_REVIEW_LABEL != '' && github.event.label.name == vars.NO_REVIEW_LABEL) ||
+      (github.event_name == 'issue_comment' && github.event.issue.pull_request &&
+       github.event.comment.user.login == 'chatgpt-codex-connector[bot]' &&
+       contains(github.event.comment.body, 'codex-review-state')) ||
       (github.event_name == 'pull_request_review' && github.event.review.state == 'approved') ||
       (github.event.action != 'labeled' && github.event.action != 'unlabeled' && vars.NO_REVIEW_LABEL != '' &&
        contains(github.event.pull_request.labels.*.name, vars.NO_REVIEW_LABEL))
@@ -45,9 +54,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
-          PR: ${{ github.event.pull_request.number || inputs.pr }}
+          PR: ${{ github.event.pull_request.number || github.event.issue.number || inputs.pr }}
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           NO_REVIEW_LABEL: ${{ vars.NO_REVIEW_LABEL }}
+          CODEX_REVIEW: ${{ vars.CODEX_REVIEW }}
         run: |
           gh api "repos/$REPO/contents/scripts/merge-gate.sh?ref=$DEFAULT_BRANCH" \
             -H "Accept: application/vnd.github.raw" > "$RUNNER_TEMP/merge-gate.sh"

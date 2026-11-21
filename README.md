@@ -27,7 +27,7 @@ flowchart LR
 4. **Build.** Labelling an issue `claude` syncs it to GitHub, and `claude.yml` builds it on a branch named after the Linear ID and opens a PR. Without an approved mockup link (or the `bug-fix` label) nothing is built.
 5. **Review.** `claude-review.yml` reviews every ready PR and push against the issue and its design. Codex reviews the same PR through its own GitHub app.
 6. **Fix.** `claude-fix.yml` answers the reviews: it fixes what it agrees with and replies with a reason where it doesn't. Security threads need a second Claude check before they close. One round per commit, at most three; then one fresh second attempt.
-7. **Gate and merge.** The `Merge gate` status (posted by the review and fix jobs with `scripts/merge-gate.sh`) stays red while a design question is open, a review thread is unresolved, or the latest Claude review isn't "ready to merge". It is a required check, and GitHub auto-merge merges the PR once it and `check` pass.
+7. **Gate and merge.** The `Merge gate` status (posted by the review and fix jobs with `scripts/merge-gate.sh`) stays red while a design question is open, a review thread is unresolved, the latest Claude review isn't "ready to merge", or the Codex review hasn't finished (set the repository variable `CODEX_REVIEW=off` if the repo has no Codex app). It is a required check, and GitHub auto-merge merges the PR once it and `check` pass.
 8. **Report.** A daily task updates spec status in Notion, and a weekly task writes a retro.
 
 ### What still comes back to you

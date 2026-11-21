@@ -31,7 +31,7 @@ Everything else (review disagreements, failing checks, tooling problems) Claude 
 - Branch name: `claude/<linear-id-lowercase>-<short-slug>`, e.g. `claude/abc-12-search-page`. The Linear ID in the name lets Linear link the branch.
 - One issue, one PR. Keep PRs small. Open as a draft, mark ready when checks pass.
 - The PR body starts with `Fixes ABC-12` (the Linear ID), `GitHub issue: #N` and the issue's `Mockup: <link>` line, so Linear links and closes the issue and reviewers can find the design.
-- Never push to `main`. PRs merge through GitHub auto-merge once the required checks pass: `check` and `Merge gate` (no `needs-human`, no unresolved review thread, and the latest Claude review says "Verdict: ready to merge"). Never merge around them.
+- Never push to `main`. PRs merge through GitHub auto-merge once the required checks pass: `check` and `Merge gate` (no `needs-human`, no unresolved review thread, the latest Claude review says "Verdict: ready to merge", and the Codex review has finished). Never merge around them.
 - Never resolve a security thread unless a second, separate Claude check agrees it is fixed or a false alarm.
 
 ## Build and test
