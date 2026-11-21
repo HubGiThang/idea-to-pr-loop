@@ -20,7 +20,7 @@ Make one page you open every morning, with:
 
 ## Idea gate
 
-Inbox → Spec it → Specced (or Parked, Rejected). Only you set **Spec it**: it is the go-ahead for Claude to draft a spec and mockup. Claude creates ideas in Inbox and stops; it never changes an idea's Status. Put this rule in the Ideas database description too, so every Claude session that opens it sees it.
+Inbox → Spec it → Specced (or Parked, Rejected). Only you set **Spec it**: it is the go-ahead for Claude to draft a spec and mockup. Claude creates ideas in Inbox and stops; it never sets Spec it. Once the spec exists, Claude moves the idea from Spec it to Specced, and that is the only idea Status change it makes. Put this rule in the Ideas database description too, so every Claude session that opens it sees it.
 
 ## Spec lifecycle
 
