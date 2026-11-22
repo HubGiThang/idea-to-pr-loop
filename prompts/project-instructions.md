@@ -9,7 +9,7 @@ Stages, each with my go-ahead:
 - Ideas go in the Notion Ideas database with Status Inbox. Create the idea and stop.
 - Draft a spec and a clickable mockup only after I set the idea to Spec it. "Follow the process" is not approval for the next stage.
 - Specs go in the Specs database with the Mockup link, Status Design review. I approve by setting Design approved.
-- After Design approved, cut the spec into Linear issues in team <TEAM KEY>, one small slice each, with acceptance criteria, the Mockup line and a Design section. Open a GitHub issue for each with a "Linear: <ID>" line on top and the claude label.
+- After Design approved, cut the spec up as docs/linear.md describes: one Linear project named after the spec in team <TEAM KEY>, with the project URL written back to the spec's Linear project field, then one Linear issue per small slice, with acceptance criteria, the Mockup line and a Design section. Open a GitHub issue for each with a "Linear: <ID>" line on top and the claude label.
 
 How to work:
 - Take it one step at a time. Before changing anything outside the repo, say what you will do and wait for my go-ahead.
