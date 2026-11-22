@@ -17,6 +17,49 @@ Do the steps in this order, once the repo has the workflows on `main`. Turn on a
 
 Optional: the secret `AUTO_MERGE_TOKEN`, if `main` deploys through a workflow ([docs/options.md](../docs/options.md#how-prs-merge)), and the variable `NO_REVIEW_LABEL` for PRs that skip the Claude review on purpose (see `merge-gate.yml`).
 
+## Secrets and sign-ins
+
+What each secret is, where it comes from and where it lives. None of them is ever pasted into a chat.
+
+<!-- loop:secrets -->
+- **CLAUDE_CODE_OAUTH_TOKEN**
+  - What: Lets the GitHub workflows use your Claude subscription.
+  - Comes from: Run `claude setup-token` on your computer.
+  - Stored in: GitHub repo secret, set with `setup/set-token.sh`.
+  - Used by: The build, review and fix workflows.
+  - Expires: About a year. The command shows the date.
+- **GitHub CLI sign-in**
+  - What: Lets the setup scripts change your repo settings.
+  - Comes from: `gh auth login`.
+  - Stored in: Your computer's keychain (`gh` keeps it).
+  - Used by: The scripts in `setup/`.
+  - Expires: Until you sign out.
+- **AUTO_MERGE_TOKEN (optional)**
+  - What: Merges as you, so a deploy workflow on main still runs.
+  - Comes from: GitHub: Settings, Developer settings, fine-grained token for this repo only.
+  - Stored in: GitHub repo secret.
+  - Used by: The build workflow when it turns on auto-merge.
+  - Expires: The date you choose when you create it.
+- **CLOUDFLARE_API_TOKEN**
+  - What: Lets the deploy workflow publish your site, Workers and database changes.
+  - Comes from: Cloudflare: My Profile, API Tokens, a custom token for your account and the products you use.
+  - Stored in: GitHub repo secret (the account ID goes in a repo variable).
+  - Used by: The deploy workflow when main changes.
+  - Expires: The date you choose. Always set one.
+- **App secrets**
+  - What: Keys your own code needs at runtime, such as a session key.
+  - Comes from: You generate them, or the service that issues them.
+  - Stored in: Cloudflare, with `wrangler secret put` (never in the repo).
+  - Used by: Your Workers and Pages functions.
+  - Expires: When you rotate them, or when the issuer says.
+- **Connector sign-ins**
+  - What: Let Claude read and write Notion, Linear, GitHub and Cloudflare.
+  - Comes from: Sign in from Claude's connector settings.
+  - Stored in: Claude (nothing to copy).
+  - Used by: Your Claude project and the scheduled reports.
+  - Expires: When a service asks you to sign in again.
+<!-- /loop:secrets -->
+
 ## Example
 
 ```sh
