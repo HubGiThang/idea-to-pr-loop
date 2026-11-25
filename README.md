@@ -67,13 +67,18 @@ Only questions that need your judgment, and they come back to the spec's Design 
 | `.github/workflows/claude-fix.yml` | Fix rounds after each review, the second security check, the second attempt and design questions |
 | `.github/workflows/merge-gate.yml` | Updates the Merge gate when you remove `needs-human`, or on a manual re-run |
 | `scripts/merge-gate.sh` | The Merge gate's checks, posted as a commit status |
-| `.github/workflows/ci.yml` | Sample CI with a job named `check` |
+| `.github/workflows/ci.yml` | CI with a job named `check` |
 | `scripts/check.sh` | Your install, lint, typecheck and test commands (fill this in) |
+| `.github/actions/setup-toolchains/` | Installs the languages the repo's files call for (Node, Python, .NET, Java, Go, Ruby, Rust, Bun) in CI, the build and the fix rounds. See [docs/toolchains.md](docs/toolchains.md) |
+| `.github/workflows/deploy.yml` | Deploys to Cloudflare from GitHub Actions: previews for pull requests, production on main. Off unless the repo chooses it; Cloudflare's own Git build is the default route. See [docs/cloudflare.md](docs/cloudflare.md) |
+| `scripts/deploy.sh` | The one deploy command, for either route and for your computer (fill in its settings) |
+| `scripts/reference-repos.sh`, `.github/reference-repos.txt` | Read-only copies of other repos, on GitHub or Azure DevOps, for Claude to read while it builds. See [docs/reference-repos.md](docs/reference-repos.md) |
 | `.github/workflows/site-dispatch.yml` | On every push to main, tells the site repo the template changed (needs `SITE_DISPATCH_TOKEN` and `SITE_REPO`; skips without them). See [docs/site-markers.md](docs/site-markers.md) |
 | `CLAUDE.md.template` | Rules Claude follows in the repo |
-| `docs/` | Setup for Notion, Linear, GitHub, and the options |
-| `prompts/` | Spec-and-mockup prompt, new-project prompt, morning sync, weekly retro |
-| `setup/` | Scripts for the repo settings (token secret, labels, ruleset, auto-merge) and the settings checklist. Run them from this template; don't copy them into your repo |
+| `docs/` | Setup for Notion, Linear, GitHub and Cloudflare, toolchains and where builds run, reference repos, and the options |
+| `prompts/` | Spec-and-mockup prompt, new-project prompt, build-locally prompt, morning sync, weekly retro |
+| `setup/` | Scripts for the repo settings (token secret, labels, ruleset, auto-merge, Cloudflare) and the settings checklist. Run them from this template; don't copy them into your repo |
+| `handoff/` | Guides for setting the loop up in an organization: Claude Team, ChatGPT Team, Notion, Linear and GitHub Enterprise, Cloudflare and Azure DevOps. Start at [handoff/README.md](handoff/README.md) |
 
 ## Setup checklist
 
@@ -107,8 +112,9 @@ A new user can paste the starter prompt in [prompts/get-started.md](prompts/get-
    - Link: https://linear.app
 7. **Set up Cloudflare** (account: Cloudflare): Cloudflare runs what the loop ships: your domain, site, server code, database and files. Create an account, add your domain, and make one API token the deploy workflow can use.
    - More: Add your domain and switch its nameservers to Cloudflare.
-   - More: Create a custom API token limited to your account and the products you use (Pages, Workers, D1, R2). Give it an expiry date.
-   - More: Store it as the repo secret `CLOUDFLARE_API_TOKEN`, and your account ID as the repo variable `CLOUDFLARE_ACCOUNT_ID`.
+   - More: Recommended: connect the repo to Cloudflare's own Git build. Every merge to main then deploys, every pull request gets a preview, and GitHub holds no Cloudflare secret.
+   - More: Or deploy from GitHub Actions: create an API token limited to your account, with an expiry date, and run `bash setup/set-cloudflare.sh OWNER/REPO`.
+   - More: Both routes run `scripts/deploy.sh`, which also applies database migrations. The steps are in docs/cloudflare.md.
    - More: Turn on the Cloudflare connector in Claude so it can check deploys, databases and logs.
    - Link: https://dash.cloudflare.com/sign-up
 8. **Create a Claude project** (account: Claude): One project per product. It holds the repo, the Notion and Linear connections, and the rules Claude follows in every conversation and task inside it.
@@ -119,7 +125,9 @@ A new user can paste the starter prompt in [prompts/get-started.md](prompts/get-
    - More: The instructions come from `prompts/project-instructions.md` in the repo, so they match the current loop.
    - Link: https://claude.ai/code
 9. **Add the loop to your repo** (account: your repo): Paste the new-project prompt as the first message in your Claude project. Claude adds the workflows, the check and merge-gate scripts and `CLAUDE.md` on a branch and opens a pull request.
-   - More: Fill in `scripts/check.sh` with your install, lint, typecheck and test commands.
+   - More: Fill in `scripts/check.sh` with your install, lint, typecheck and test commands, and the settings at the top of `scripts/deploy.sh`.
+   - More: Pin language versions with files such as `.nvmrc` and `.python-version`. The workflows install what those files call for, so your computer and GitHub Actions use the same tools.
+   - More: Builds run in GitHub Actions when an issue gets the `claude` label. To build one on your computer instead, use prompts/build-locally.md.
    - Link: prompts/new-project.md
 10. **Turn on the repo settings** (account: your repo): Run the setup scripts in this order. Turn on auto-merge last, after the first pull request has run CI.
     - Command: `bash setup/add-labels.sh OWNER/REPO`, `bash setup/add-ruleset.sh OWNER/REPO`, `bash setup/turn-on-auto-merge.sh OWNER/REPO`
@@ -138,9 +146,9 @@ Cloudflare runs what the loop ships: your domain, site, server code, database an
 
 <!-- loop:cloudflare -->
 - **DNS:** Your domain and its records. A DNS change is a hard-to-undo step, so it happens only when a spec names it.
-- **Hosting:** Pages serves the site. Every pull request gets its own preview address, and merging to main deploys to production.
+- **Hosting:** Workers or Pages serve the site. Every pull request gets its own preview address, and merging to main deploys to production, through Cloudflare's own Git build or the deploy workflow.
 - **Workers:** Server code and APIs that run close to your visitors, configured in the repo with wrangler.
-- **Database:** D1, a SQL database. Migrations arrive in pull requests and only add things; dropping data is a stop.
+- **Database:** D1, a SQL database. Migrations arrive in pull requests, only add things, and are applied by the production deploy; dropping data is a stop.
 - **Storage:** R2 holds files and uploads. The app hands out short-lived links instead of sharing keys.
 - **Access:** Sign-in in front of admin pages, staging and previews, so only the people you list get in.
 - **Turnstile:** A bot check on public forms, without puzzles for real visitors.

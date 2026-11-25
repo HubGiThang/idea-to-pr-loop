@@ -1,0 +1,6 @@
+# Repos Claude may read while it builds, one per line: an https clone URL and an optional folder name.
+# They are copied into .reference/ as read-only snapshots and never committed (docs/reference-repos.md).
+# Private repos need the secret REFERENCE_REPOS_TOKEN, a token that can only read code.
+#
+# https://github.com/<ORG>/<REPO>.git
+# https://dev.azure.com/<ORG>/<PROJECT>/_git/<REPO> legacy-api

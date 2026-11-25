@@ -28,7 +28,8 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-      # Add your language setup here with its cache turned on, for example
-      # actions/setup-node@v4 with `cache: pnpm`, or actions/setup-python@v5 with `cache: pip`.
+      # Installs the toolchains the repo's files call for (Node, Python, .NET, Java, Go, Ruby, Rust, Bun),
+      # with their caches on. See docs/toolchains.md.
+      - uses: ./.github/actions/setup-toolchains
       - name: Run the repo's checks
         run: ./scripts/check.sh

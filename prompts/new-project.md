@@ -14,9 +14,12 @@ changes something outside the repo, and wait for my go-ahead.
    make the mockup with prompts/spec-and-mockup.md and set it to Design review for me.
    Don't build anything until I approve it.
 2. In the new repo, on a branch, add:
-   - .github/workflows/ from idea-to-pr-loop, unchanged.
+   - .github/workflows/, .github/actions/, .github/reference-repos.txt and scripts/ from
+     idea-to-pr-loop, unchanged.
    - scripts/check.sh with the install, lint, typecheck, build and test commands for the
-     stack the spec chooses, and any language setup ci.yml needs.
+     stack the spec chooses, and version files (.nvmrc, .python-version and the like) so
+     the workflows install the right tools.
+   - scripts/deploy.sh with its settings filled in for the Cloudflare products the spec uses.
    - CLAUDE.md from CLAUDE.md.template, with our Linear team key and commands filled in.
    Open it as a draft PR and tell me when it is up.
 3. After I merge the setup PR, add the labels, the protect main ruleset and

@@ -11,7 +11,7 @@ Do these once per repo. The scripts in [setup/](../setup/README.md) do the token
 
 ## Files
 
-Copy `.github/workflows/`, `scripts/check.sh`, `scripts/merge-gate.sh` and `CLAUDE.md.template` (renamed to `CLAUDE.md`) into the repo, then fill in `scripts/check.sh` and the CLAUDE.md placeholders. The workflows create `fix-round-1..3`, `needs-human` and `attempt-2` the first time they need them. Create `claude`, `needs-human` and `bug-fix` up front with `bash setup/add-labels.sh OWNER/REPO`, so they exist before the first issue (Linear's sync, if you use it, also brings them over).
+Copy `.github/workflows/`, `.github/actions/`, `.github/reference-repos.txt`, everything in `scripts/` and `CLAUDE.md.template` (renamed to `CLAUDE.md`) into the repo, then fill in `scripts/check.sh`, the settings at the top of `scripts/deploy.sh` and the CLAUDE.md placeholders. The workflows install the repo's languages by themselves ([toolchains](toolchains.md)). The workflows create `fix-round-1..3`, `needs-human` and `attempt-2` the first time they need them. Create `claude`, `needs-human` and `bug-fix` up front with `bash setup/add-labels.sh OWNER/REPO`, so they exist before the first issue (Linear's sync, if you use it, also brings them over).
 
 ## Protect main
 
@@ -40,7 +40,7 @@ GitHub bills every job as at least one minute, and private repos share a monthly
 
 When you fill in `ci.yml` and `scripts/check.sh`:
 
-- Turn on the setup action's cache (`cache: pnpm`, `cache: npm`, `cache: pip`).
+- The shared toolchain step already turns on each language's cache.
 - Cache test browsers, for example Playwright's: `actions/cache` on `~/.cache/ms-playwright`, keyed on the lockfile, and run `playwright install chromium` only on a cache miss.
 - Don't install system packages the runner image already has (for example skip `playwright install-deps`).
 - Put a job-level `if:` on other workflows that react to common events (labels, comments), so the job is skipped rather than started and stopped. Skipped jobs aren't billed.

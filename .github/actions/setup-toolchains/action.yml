@@ -1,0 +1,131 @@
+# Installs the language toolchains a repo needs, so CI, the Claude build and the Claude fix rounds can all
+# run ./scripts/check.sh. Each toolchain is switched on by a file in the repo, and its version comes from
+# the repo's own version file, so a laptop and GitHub Actions use the same versions (see docs/toolchains.md).
+# A repo with none of these files gets nothing installed.
+name: Set up toolchains
+description: Installs Node, Python, .NET, Java, Go, Ruby, Rust and Bun when the repo has their files.
+
+runs:
+  using: composite
+  steps:
+    - name: Detect toolchains
+      id: detect
+      shell: bash
+      run: |
+        tracked() { [ -n "$(git ls-files -- "$@" | head -1)" ]; }
+        out() { echo "$1=$2" >> "$GITHUB_OUTPUT"; echo "$1=$2"; }
+
+        # Node, with pnpm, Yarn or npm
+        if tracked 'package.json' '*/package.json' || [ -f .nvmrc ] || [ -f .node-version ]; then
+          out node true
+          if [ -f .nvmrc ]; then out node_file .nvmrc
+          elif [ -f .node-version ]; then out node_file .node-version
+          else out node_version 'lts/*'; fi
+          if tracked 'pnpm-lock.yaml'; then
+            out pnpm true; out node_cache pnpm
+            grep -q '"packageManager"' package.json 2>/dev/null || out pnpm_version latest
+          elif tracked 'yarn.lock'; then out yarn true; out node_cache yarn
+          elif tracked 'package-lock.json'; then out node_cache npm
+          fi
+        fi
+        if tracked 'bun.lock' 'bun.lockb'; then out bun true; fi
+
+        # Python, with pip, uv or Poetry
+        if [ -f .python-version ] || tracked 'pyproject.toml' 'requirements*.txt' '*/requirements*.txt' 'Pipfile' 'uv.lock' 'poetry.lock'; then
+          out python true
+          if [ -f .python-version ]; then out python_file .python-version; else out python_version '3.x'; fi
+          if tracked 'requirements*.txt' '*/requirements*.txt' 'pyproject.toml'; then out python_cache pip; fi
+          if tracked 'uv.lock'; then out uv true; fi
+          if tracked 'poetry.lock'; then out poetry true; fi
+        fi
+
+        # .NET: the runner image already has current SDKs; global.json pins an exact one.
+        if [ -f global.json ]; then out dotnet true; fi
+
+        # Java, with Maven or Gradle
+        if [ -f .java-version ] || tracked 'pom.xml' 'build.gradle' 'build.gradle.kts' '*/pom.xml'; then
+          out java true
+          if [ -f .java-version ]; then out java_file .java-version; else out java_version 21; fi
+          if tracked 'pom.xml' '*/pom.xml'; then out java_cache maven
+          elif tracked 'build.gradle' 'build.gradle.kts'; then out java_cache gradle; fi
+        fi
+
+        if [ -f go.mod ]; then out go true; fi
+
+        if [ -f Gemfile ]; then
+          out ruby true
+          if [ -f .ruby-version ] || [ -f .tool-versions ]; then out ruby_version default; else out ruby_version ruby; fi
+        fi
+
+        # Rust: rustup is on the runner image and installs the version in rust-toolchain.toml by itself.
+        if [ -f Cargo.toml ]; then out rust true; fi
+
+    - uses: pnpm/action-setup@v4
+      if: steps.detect.outputs.pnpm == 'true'
+      with:
+        version: ${{ steps.detect.outputs.pnpm_version }}
+
+    - uses: actions/setup-node@v4
+      if: steps.detect.outputs.node == 'true'
+      with:
+        node-version-file: ${{ steps.detect.outputs.node_file }}
+        node-version: ${{ steps.detect.outputs.node_version }}
+        cache: ${{ steps.detect.outputs.node_cache }}
+
+    - name: Turn on Yarn through Corepack
+      if: steps.detect.outputs.yarn == 'true'
+      shell: bash
+      run: command -v corepack > /dev/null && corepack enable || true
+
+    - uses: oven-sh/setup-bun@v2
+      if: steps.detect.outputs.bun == 'true'
+
+    - uses: actions/setup-python@v5
+      if: steps.detect.outputs.python == 'true'
+      with:
+        python-version-file: ${{ steps.detect.outputs.python_file }}
+        python-version: ${{ steps.detect.outputs.python_version }}
+        cache: ${{ steps.detect.outputs.python_cache }}
+
+    - name: Install uv
+      if: steps.detect.outputs.uv == 'true'
+      shell: bash
+      run: python -m pip install --quiet uv
+
+    - name: Install Poetry
+      if: steps.detect.outputs.poetry == 'true'
+      shell: bash
+      run: pipx install poetry
+
+    - uses: actions/setup-dotnet@v4
+      if: steps.detect.outputs.dotnet == 'true'
+      with:
+        global-json-file: global.json
+
+    - uses: actions/setup-java@v4
+      if: steps.detect.outputs.java == 'true'
+      with:
+        distribution: temurin
+        java-version-file: ${{ steps.detect.outputs.java_file }}
+        java-version: ${{ steps.detect.outputs.java_version }}
+        cache: ${{ steps.detect.outputs.java_cache }}
+
+    - uses: actions/setup-go@v5
+      if: steps.detect.outputs.go == 'true'
+      with:
+        go-version-file: go.mod
+
+    - uses: ruby/setup-ruby@v1
+      if: steps.detect.outputs.ruby == 'true'
+      with:
+        ruby-version: ${{ steps.detect.outputs.ruby_version }}
+        bundler-cache: true
+
+    - uses: actions/cache@v4
+      if: steps.detect.outputs.rust == 'true'
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+          target
+        key: cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
