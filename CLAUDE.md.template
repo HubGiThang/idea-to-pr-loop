@@ -36,7 +36,9 @@ Everything else (review disagreements, failing checks, tooling problems) Claude 
 
 ## Build and test
 
-- All checks: `./scripts/check.sh` (CI runs the same script).
+- All checks: `./scripts/check.sh` (CI runs the same script). Tool versions are pinned in the repo's version files (for example `.nvmrc`, `.python-version`); GitHub Actions installs from them.
+- Deploys run through `./scripts/deploy.sh` when a PR merges. Never deploy by hand from a build.
+- `.reference/` holds read-only copies of the repos listed in `.github/reference-repos.txt`. Read them for context. Never edit them, commit them or copy secrets out of them.
 - <Install, run locally, and any other commands worth knowing.>
 
 ## Reviews

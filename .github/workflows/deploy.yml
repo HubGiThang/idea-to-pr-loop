@@ -1,0 +1,56 @@
+# Deploys to Cloudflare from GitHub Actions: a preview for every ready pull request, production on every
+# push to main. It runs ./scripts/deploy.sh, the same command Cloudflare's own Git build and your computer use.
+#
+# Off by default. Cloudflare's own Git build is the recommended route, because it needs no secret in GitHub
+# (docs/cloudflare.md). To deploy from Actions instead, run `bash setup/set-cloudflare.sh OWNER/REPO`, which
+# sets the secret CLOUDFLARE_API_TOKEN and the variables CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_DEPLOY=actions.
+# Use one route per repo, not both.
+#
+# A merge made with the built-in GITHUB_TOKEN starts no workflow on main. With auto-merge on, add the
+# AUTO_MERGE_TOKEN secret so this workflow runs after a merge (docs/options.md).
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  # A newer push replaces a preview in progress. A production deploy always finishes.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  deploy:
+    # Skipped (and not billed) unless the repo chose this route. Drafts and forks get no preview:
+    # a fork's code must never run with the Cloudflare token.
+    if: |
+      vars.CLOUDFLARE_DEPLOY == 'actions' &&
+      (github.event_name != 'pull_request' ||
+        (github.event.pull_request.draft == false &&
+         github.event.pull_request.head.repo.full_name == github.repository))
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+      MODE: ${{ github.event_name == 'pull_request' && 'preview' || 'production' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-toolchains
+      - name: Deploy
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "::error::Set the secret CLOUDFLARE_API_TOKEN and the variable CLOUDFLARE_ACCOUNT_ID (bash setup/set-cloudflare.sh OWNER/REPO)."
+            exit 1
+          fi
+          ./scripts/deploy.sh "$MODE" 2>&1 | tee "$RUNNER_TEMP/deploy.log"
+          {
+            echo "### Cloudflare $MODE deploy"
+            grep -oE 'https://[A-Za-z0-9./_-]+' "$RUNNER_TEMP/deploy.log" | sort -u | sed 's/^/- /' || true
+          } >> "$GITHUB_STEP_SUMMARY"

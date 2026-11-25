@@ -15,6 +15,10 @@ Do the steps in this order, once the repo has the workflows on `main`. Turn on a
 | 5 | Ruleset "protect main" | After the first PR has run CI and been reviewed: `bash setup/add-ruleset.sh OWNER/REPO ...` (requires `check` and `Merge gate`; pass `-c NAME` for each check if your CI jobs have other names) |
 | 6 | Auto-merge | `bash setup/turn-on-auto-merge.sh OWNER/REPO ...` (Allow auto-merge plus the variable `AUTO_MERGE=true`; skips a repo unless its ruleset is active and requires checks) |
 
+| 7 | Cloudflare deploys | Recommended: `bash setup/connect-cloudflare-builds.sh OWNER/REPO WORKER_NAME` connects Cloudflare's own Git build, with no secret in GitHub. Or `bash setup/set-cloudflare.sh OWNER/REPO ...` to deploy from GitHub Actions ([docs/cloudflare.md](../docs/cloudflare.md)) |
+
+Optional: the secret `REFERENCE_REPOS_TOKEN`, a read-only token for the repos listed in `.github/reference-repos.txt` ([docs/reference-repos.md](../docs/reference-repos.md)); set it, or any other secret, with `bash setup/set-secret.sh NAME OWNER/REPO ...`.
+
 Optional: the secret `AUTO_MERGE_TOKEN`, if `main` deploys through a workflow ([docs/options.md](../docs/options.md#how-prs-merge)), and the variable `NO_REVIEW_LABEL` for PRs that skip the Claude review on purpose (see `merge-gate.yml`).
 
 ## Secrets and sign-ins
@@ -41,10 +45,16 @@ What each secret is, where it comes from and where it lives. None of them is eve
   - Used by: The build workflow when it turns on auto-merge.
   - Expires: The date you choose when you create it.
 - **CLOUDFLARE_API_TOKEN**
-  - What: Lets the deploy workflow publish your site, Workers and database changes.
-  - Comes from: Cloudflare: My Profile, API Tokens, a custom token for your account and the products you use.
-  - Stored in: GitHub repo secret (the account ID goes in a repo variable).
-  - Used by: The deploy workflow when main changes.
+  - What: Lets the deploy workflow publish your site, Workers and database changes. Not needed when Cloudflare's own Git build deploys the repo.
+  - Comes from: Cloudflare: Account API tokens, the "Edit Cloudflare Workers" template, limited to your account, plus D1 Edit if you have a database.
+  - Stored in: GitHub repo secret, set with `setup/set-cloudflare.sh` (the account ID goes in a repo variable).
+  - Used by: The deploy workflow, for previews and when main changes.
+  - Expires: The date you choose. Always set one.
+- **REFERENCE_REPOS_TOKEN (optional)**
+  - What: Lets builds read the other repos listed in `.github/reference-repos.txt`.
+  - Comes from: The host of those repos (GitHub or Azure DevOps): a token that can only read code.
+  - Stored in: GitHub repo secret, set with `setup/set-secret.sh`.
+  - Used by: The build and fix workflows, before Claude starts.
   - Expires: The date you choose. Always set one.
 - **App secrets**
   - What: Keys your own code needs at runtime, such as a session key.
@@ -70,6 +80,7 @@ bash setup/add-labels.sh  my-org/web my-org/api
 bash setup/add-ruleset.sh my-org/web my-org/api
 bash setup/add-ruleset.sh -c "Lint and test" -c "Merge gate" my-org/docs
 bash setup/turn-on-auto-merge.sh my-org/web my-org/api my-org/docs
+CLOUDFLARE_ACCOUNT_ID=<ACCOUNT ID> bash setup/connect-cloudflare-builds.sh my-org/web web
 ```
 
 ## PRs that change workflow files

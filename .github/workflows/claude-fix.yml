@@ -151,6 +151,25 @@ jobs:
             | jq -s . > "$OUT/threads.json"
           echo "$(jq length "$OUT/threads.json") unresolved thread(s)."
 
+      # The toolchains ./scripts/check.sh needs (docs/toolchains.md).
+      - uses: ./.github/actions/setup-toolchains
+        if: steps.round.outputs.run == 'true'
+
+      # Read-only copies of the repos in .github/reference-repos.txt, for context (docs/reference-repos.md).
+      # The script and the list come from the default branch, so a PR cannot change where the token goes.
+      - name: Fetch reference repos
+        if: steps.round.outputs.run == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REFERENCE_REPOS_TOKEN: ${{ secrets.REFERENCE_REPOS_TOKEN }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          for f in scripts/reference-repos.sh .github/reference-repos.txt; do
+            gh api "repos/$REPO/contents/$f?ref=$DEFAULT_BRANCH" -H "Accept: application/vnd.github.raw" \
+              > "$RUNNER_TEMP/$(basename "$f")" 2> /dev/null || { echo "No $f on the default branch; skipping."; exit 0; }
+          done
+          bash "$RUNNER_TEMP/reference-repos.sh" "$RUNNER_TEMP/reference-repos.txt"
+
       - uses: anthropics/claude-code-action@v1
         id: claude
         if: steps.round.outputs.run == 'true'
