@@ -44,8 +44,9 @@ Do the guides in this order. Each one says what to check before moving on.
 5. [Linear Enterprise](linear-enterprise.md): issues.
 6. [Cloudflare](cloudflare.md): deploys.
 7. [Azure DevOps](azure-devops.md): read-only reference repos. Skip it if no repo needs one.
-8. Add the loop to the first repo: paste [prompts/new-project.md](../prompts/new-project.md) into its Claude project, then run the scripts in [setup/README.md](../setup/README.md).
-9. Schedule the morning sync and the weekly retro ([prompts/](../prompts/README.md)).
+8. Put this folder in a private repo of your own (`git init`, commit, push). On Windows, first run `git update-index --chmod=+x scripts/*.sh setup/*.sh` after `git add -A`, because unzipping there drops the scripts' executable flag, and use Git Bash for the setup scripts.
+9. Add the loop to the first repo: paste [prompts/new-project.md](../prompts/new-project.md) into its Claude project, then run the scripts in [setup/README.md](../setup/README.md).
+10. Schedule the morning sync and the weekly retro ([prompts/](../prompts/README.md)).
 
 Start with one repo and one small spec. Add more repos only after one pull request has gone from idea to production without anyone touching it. Every repo gets the same workflows and the same settings, so the setup scripts take a list of repos.
 

@@ -14,8 +14,9 @@ changes something outside the repo, and wait for my go-ahead.
    make the mockup with prompts/spec-and-mockup.md and set it to Design review for me.
    Don't build anything until I approve it.
 2. In the new repo, on a branch, add:
-   - .github/workflows/, .github/actions/, .github/reference-repos.txt and scripts/ from
-     idea-to-pr-loop, unchanged.
+   - .github/workflows/, .github/actions/, .github/reference-repos.txt, .gitattributes and
+     scripts/ from idea-to-pr-loop, unchanged. Keep scripts/check.sh and scripts/deploy.sh
+     executable in git (git update-index --chmod=+x).
    - scripts/check.sh with the install, lint, typecheck, build and test commands for the
      stack the spec chooses, and version files (.nvmrc, .python-version and the like) so
      the workflows install the right tools.

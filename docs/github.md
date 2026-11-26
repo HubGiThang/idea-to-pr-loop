@@ -11,7 +11,9 @@ Do these once per repo. The scripts in [setup/](../setup/README.md) do the token
 
 ## Files
 
-Copy `.github/workflows/`, `.github/actions/`, `.github/reference-repos.txt`, everything in `scripts/` and `CLAUDE.md.template` (renamed to `CLAUDE.md`) into the repo, then fill in `scripts/check.sh`, the settings at the top of `scripts/deploy.sh` and the CLAUDE.md placeholders. The workflows install the repo's languages by themselves ([toolchains](toolchains.md)). The workflows create `fix-round-1..3`, `needs-human` and `attempt-2` the first time they need them. Create `claude`, `needs-human` and `bug-fix` up front with `bash setup/add-labels.sh OWNER/REPO`, so they exist before the first issue (Linear's sync, if you use it, also brings them over).
+Copy `.github/workflows/`, `.github/actions/`, `.github/reference-repos.txt`, `.gitattributes`, everything in `scripts/` and `CLAUDE.md.template` (renamed to `CLAUDE.md`) into the repo, then fill in `scripts/check.sh`, the settings at the top of `scripts/deploy.sh` and the CLAUDE.md placeholders. The workflows install the repo's languages by themselves ([toolchains](toolchains.md)).
+
+**On Windows:** unzipping or copying files there drops the "executable" flag that `scripts/check.sh` and `scripts/deploy.sh` need on GitHub's Linux runners. After copying the files into a repo, run `git update-index --chmod=+x scripts/check.sh scripts/deploy.sh` before you commit, and copy `.gitattributes` too so shell scripts keep their line endings. Use Git Bash for the setup scripts. The workflows create `fix-round-1..3`, `needs-human` and `attempt-2` the first time they need them. Create `claude`, `needs-human` and `bug-fix` up front with `bash setup/add-labels.sh OWNER/REPO`, so they exist before the first issue (Linear's sync, if you use it, also brings them over).
 
 ## Protect main
 
