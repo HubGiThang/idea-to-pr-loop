@@ -4,7 +4,7 @@
 
 By default Claude Code may add a `Co-Authored-By` line to commits and a footer to PR descriptions. To turn that off:
 
-1. In each workflow, uncomment the `settings:` line under `anthropics/claude-code-action@v1`.
+1. In each workflow, uncomment the `settings:` line under `anthropics/claude-code-action@v1`. The build and fix steps already have a `settings:` line (it gives one command up to 30 minutes, for a long `./scripts/check.sh`); there, add the two attribution keys to that line instead, as the comment below it shows. A step can have only one `settings:` input.
 2. In `CLAUDE.md`, uncomment the attribution rule under Git, so Claude also leaves it out of comments and files.
 
 ## How PRs merge
